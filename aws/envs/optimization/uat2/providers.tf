@@ -1,0 +1,20 @@
+provider "aws" {
+  region = "us-east-1"
+
+  default_tags {
+    tags = {
+      Project     = "ngencerf"
+      ManagedBy   = "Terraform"
+      Repo        = "nwm-ngencerf-infra"
+      Owner       = var.owner
+      Environment = "optimization-uat2"
+    }
+  }
+}
+
+# awscc (AWS Cloud Control) provider — hosts the AWS PCS resources in pcs.tf.
+# No default_tags support; PCS resources tag themselves where the schema
+# allows. Region must match the aws provider.
+provider "awscc" {
+  region = "us-east-1"
+}

@@ -1,0 +1,37 @@
+# Terraform
+**/.terraform/*
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+crash.log
+crash.*.log
+*.tfvars
+*.tfvars.json
+!*.tfvars.example
+
+# Per-account backend config (filled in after bootstrap)
+backend.hcl
+!backend.hcl.example
+
+# Override files (local-only modifications)
+override.tf
+override.tf.json
+*_override.tf
+*_override.tf.json
+
+# Provider lock plan binary
+*.tfplan
+
+# CLI config
+.terraformrc
+terraform.rc
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editors / IDEs
+.idea/
+.vscode/
+*.swp
+*~

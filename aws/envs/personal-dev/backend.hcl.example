@@ -1,0 +1,9 @@
+# Copy to backend.hcl (gitignored) and fill values from aws/bootstrap/'s outputs.
+# State lives at <bucket>/dev/terraform.tfstate.
+
+bucket       = "nwm-ngencerf-tfstate-<your-account-id>"
+key          = "dev/terraform.tfstate"
+region       = "us-east-1"
+encrypt      = true
+kms_key_id   = "alias/nwm-ngencerf-tfstate"
+use_lockfile = true
