@@ -120,18 +120,71 @@ resource "aws_security_group_rule" "pcs_egress_all" {
   description       = "All egress (SSM, package installs, callbacks)"
 }
 
+# --- EFS reachability from PCS nodes ------------------------------------
+# Opens 2049 (NFS) on the EFS SG to the PCS SG so compute + login nodes can
+# mount the shared filesystem the launch template configures below. The EFS SG
+# otherwise admits only the web tier (efs_ingress_web in security_groups.tf).
+# Gated on enable_pcs because the PCS SG only exists then, and kept here (not in
+# security_groups.tf) so tearing out PCS removes this with it — same pattern as
+# pcs_ingress_web_slurmrestd.
+
+resource "aws_security_group_rule" "efs_ingress_pcs" {
+  count                    = var.enable_pcs ? 1 : 0
+  type                     = "ingress"
+  from_port                = 2049
+  to_port                  = 2049
+  protocol                 = "tcp"
+  source_security_group_id = aws_security_group.pcs[0].id
+  security_group_id        = aws_security_group.efs.id
+  description              = "NFS from PCS compute + login nodes"
+}
+
 # --- PCS node launch template -------------------------------------------
-# Shared by the compute and login node groups. Carries the PCS SG and enforces
-# IMDSv2. Instance type is set per node group (instance_configs), not here.
-# IMDSv2-only hardens the instance metadata endpoint against SSRF credential
-# theft.
+# Shared by the compute and login node groups. Carries the PCS SG, enforces
+# IMDSv2, and mounts the shared EFS. Instance type is set per node group
+# (instance_configs), not here. IMDSv2-only hardens the instance metadata
+# endpoint against SSRF credential theft.
 
 resource "aws_launch_template" "pcs" {
   count       = var.enable_pcs ? 1 : 0
   name        = "${var.name_prefix}-pcs-node"
-  description = "PCS compute + login node settings: PCS SG, IMDSv2."
+  description = "PCS compute + login node settings: PCS SG, IMDSv2, EFS mount."
 
   vpc_security_group_ids = [aws_security_group.pcs[0].id]
+
+  # Mount the shared EFS at /ngencerf/data via cloud-init.
+  #
+  # PCS REQUIRES launch-template user_data to be a MIME multipart archive: it
+  # merges its own node-bootstrap (Slurm agent registration) into your parts.
+  # Plain shell-script user_data would replace that bootstrap and the node would
+  # never join the cluster. The text/cloud-config part runs before the node
+  # registers with the PCS API.
+  #
+  # amazon-efs-utils provides the `efs` mount type with `tls` (in-transit
+  # encryption) — matching the Django mount (transit_encryption = ENABLED in
+  # django.tf). The path /ngencerf/data matches Django's containerPath and
+  # settings.py CONTAINER_DATA_ROOT, so compute nodes and Django share ONE
+  # filesystem — the Slurm adapter assumes a single shared FS. Mounting by
+  # file-system-id (not DNS) lets the efs helper pick the AZ-local mount target.
+  # SC-28: encryption in transit.
+  user_data = base64encode(<<EOT
+MIME-Version: 1.0
+Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
+
+--==MYBOUNDARY==
+Content-Type: text/cloud-config; charset="us-ascii"
+
+packages:
+  - amazon-efs-utils
+
+runcmd:
+  - mkdir -p /ngencerf/data
+  - echo "${aws_efs_file_system.main.id}:/ /ngencerf/data efs tls,_netdev" >> /etc/fstab
+  - mount -a -t efs defaults
+
+--==MYBOUNDARY==--
+EOT
+  )
 
   metadata_options {
     http_endpoint = "enabled"
