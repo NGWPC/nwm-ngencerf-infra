@@ -248,7 +248,7 @@ resource "awscc_pcs_compute_node_group" "compute" {
   count      = var.enable_pcs ? 1 : 0
   name       = "compute"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id

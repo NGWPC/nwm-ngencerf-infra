@@ -4,6 +4,12 @@ variable "allowed_hosts" {
   default     = []
 }
 
+variable "build_compute_ami" {
+  type        = bool
+  description = "When true, provisions the EC2 Image Builder pipeline (imagebuilder.tf) that bakes the custom PCS compute-node AMI from a clean Ubuntu 24.04 base: AWS PCS agent + Slurm 25.05 + Apptainer + amazon-efs-utils. A build runs a ~20-30 min build instance, so it's a separate opt-in from enable_pcs. After building, read the compute_ami_id output and pin it into pcs_compute_ami_id. Default false so no env builds unless asked."
+  default     = false
+}
+
 variable "enable_pcs" {
   type        = bool
   description = "When true, provisions the AWS PCS (managed Slurm) cluster, compute + login node groups, queue, node IAM instance profile, security group, and launch template (all in pcs.tf). Default false so NGWPC envs stay untouched; set true only in personal-dev until the Slurm-direct submission path is proven."
@@ -25,6 +31,12 @@ variable "ngencerf_ui_image" {
   type        = string
   description = "Full container image URL (including tag) for the Nuxt UI ECS service. Defaults to public GHCR :latest, built from Dockerfile.production-pw in ngencerf-ui. Stateless Nuxt 3 SSR on port 3000; reads NGENCERF_BASE_URL via runtimeConfig at runtime. Override to pin a release tag for prod-tier envs."
   default     = "ghcr.io/ngwpc/ngencerf-ui:latest"
+}
+
+variable "pcs_compute_ami_id" {
+  type        = string
+  description = "AMI ID for the PCS compute node group. When set (typically the compute_ami_id output from a build_compute_ami run), the compute node group uses this custom AMI; empty falls back to the PCS sample AMI. The login node always uses the sample AMI. Default empty."
+  default     = ""
 }
 
 variable "private_subnet_ids" {
