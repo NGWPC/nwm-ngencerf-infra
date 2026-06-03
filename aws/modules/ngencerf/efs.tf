@@ -32,3 +32,48 @@ resource "aws_efs_mount_target" "main" {
   subnet_id       = var.private_subnet_ids[count.index]
   security_groups = [aws_security_group.efs.id]
 }
+
+# EFS access points for the Django Fargate task. Each exposes a subtree of the
+# one filesystem as its own root and AUTO-CREATES that subtree on first mount
+# (creation_info) — so a fresh EFS needs no manual mkdir. No posix_user block:
+# access is NOT pinned to a fixed uid, so the Django task (root) and the PCS
+# compute nodes (root, raw EFS mount) read/write the same files with no uid
+# mismatch. Compute nodes mount the EFS ROOT directly (pcs.tf launch template),
+# not through these access points.
+#   - cal_data:    /data/ngen-cal-data -> Django /ngencerf/data       (CONTAINER_DATA_ROOT)
+#   - singularity: /singularity        -> Django /ngencerf/containers  (SINGULARITY_DIR)
+# AC-6: each task mount is scoped to its own subtree.
+
+resource "aws_efs_access_point" "cal_data" {
+  file_system_id = aws_efs_file_system.main.id
+
+  root_directory {
+    path = "/data/ngen-cal-data"
+    creation_info {
+      owner_uid   = 0
+      owner_gid   = 0
+      permissions = "0755"
+    }
+  }
+
+  tags = {
+    Name = "${var.name_prefix}-efs-cal-data"
+  }
+}
+
+resource "aws_efs_access_point" "singularity" {
+  file_system_id = aws_efs_file_system.main.id
+
+  root_directory {
+    path = "/singularity"
+    creation_info {
+      owner_uid   = 0
+      owner_gid   = 0
+      permissions = "0755"
+    }
+  }
+
+  tags = {
+    Name = "${var.name_prefix}-efs-singularity"
+  }
+}

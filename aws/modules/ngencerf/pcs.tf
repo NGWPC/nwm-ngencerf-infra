@@ -152,7 +152,7 @@ resource "aws_launch_template" "pcs" {
 
   vpc_security_group_ids = [aws_security_group.pcs[0].id]
 
-  # Mount the shared EFS at /ngencerf/data via cloud-init.
+  # Mount the shared EFS root at /ngencerf-app via cloud-init.
   #
   # PCS REQUIRES launch-template user_data to be a MIME multipart archive: it
   # merges its own node-bootstrap (Slurm agent registration) into your parts.
@@ -162,11 +162,13 @@ resource "aws_launch_template" "pcs" {
   #
   # amazon-efs-utils provides the `efs` mount type with `tls` (in-transit
   # encryption) — matching the Django mount (transit_encryption = ENABLED in
-  # django.tf). The path /ngencerf/data matches Django's containerPath and
-  # settings.py CONTAINER_DATA_ROOT, so compute nodes and Django share ONE
-  # filesystem — the Slurm adapter assumes a single shared FS. Mounting by
-  # file-system-id (not DNS) lets the efs helper pick the AZ-local mount target.
-  # SC-28: encryption in transit.
+  # django.tf). Compute nodes mount the EFS ROOT at /ngencerf-app (PW-parity
+  # layout): SIFs land at /ngencerf-app/singularity, cal data at
+  # /ngencerf-app/data/ngen-cal-data. Django (Fargate) mounts the SAME EFS via
+  # access points at /ngencerf/data + /ngencerf/containers; the Slurm adapter
+  # translates those container paths to these host paths (HOST_DATA_ROOT in
+  # django.tf). Mounting by file-system-id (not DNS) lets the efs helper pick the
+  # AZ-local mount target. SC-28: encryption in transit.
   user_data = base64encode(<<EOT
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
@@ -178,8 +180,8 @@ packages:
   - amazon-efs-utils
 
 runcmd:
-  - mkdir -p /ngencerf/data
-  - echo "${aws_efs_file_system.main.id}:/ /ngencerf/data efs tls,_netdev" >> /etc/fstab
+  - mkdir -p /ngencerf-app
+  - echo "${aws_efs_file_system.main.id}:/ /ngencerf-app efs tls,_netdev" >> /etc/fstab
   - mount -a -t efs defaults
 
 --==MYBOUNDARY==--
