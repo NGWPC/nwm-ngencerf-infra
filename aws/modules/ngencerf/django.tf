@@ -51,9 +51,14 @@ resource "aws_ecs_task_definition" "django" {
         ], var.enable_pcs ? [
         # Slurm REST API: Django POSTs jobs to slurmrestd on the PCS
         # controller. JOB_EXECUTION_MODE flips to SLURM with the REST-adapter
-        # image. NGENCERF_BASE_URL needs the explicit :80 (normalize_base_url
-        # appends :8000 otherwise) and the /api prefix so compute-node callbacks
-        # reach the /api-prefixed routes.
+        # image. NGENCERF_BASE_URL is the base for the callbacks the compute
+        # job makes back to Django. get_callback_url()
+        # (calibration/run_util/job_executor_slurm.py) builds NGENCERF_BASE_URL +
+        # a callback path whose literals are BARE (no /api), as of the server's
+        # "Update base endpoints" change, so the /api must live here in the base
+        # or the callback 404s against the /api-prefixed routes. Keep the
+        # explicit :80 (normalize_base_url appends :8000 otherwise). The Nuxt UI
+        # base in nuxt.tf carries /api the same way.
         { name = "NGENCERF_BASE_URL", value = "http://${module.alb.dns_name}:80/api" },
         { name = "SLURM_REST_ENDPOINT", value = "http://${local.pcs_slurmrestd_endpoint.private_ip_address}:${local.pcs_slurmrestd_endpoint.port}" },
         { name = "SLURM_JWT_SECRET_ARN", value = awscc_pcs_cluster.main[0].slurm_configuration.auth_key.secret_arn },

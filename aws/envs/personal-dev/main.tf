@@ -55,7 +55,14 @@ module "ngencerf" {
   # PCS (managed Slurm) — personal-dev only; NGWPC envs keep the false default.
   enable_pcs = true
 
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260601051124Z-mpena-aws-migration"
+  # The compute AMI is pre-baked by imagebuilder.tf and pinned below; keep this
+  # false to reuse it (flip true + bump the component/recipe version to rebuild).
+  build_compute_ami = false
+
+  # Pin compute to the baked AMI (the compute_ami_id output from the build above).
+  pcs_compute_ami_id = "ami-0b19a96fdebfadced"
+
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260603004352Z-mpena-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260601051845Z-mpena-aws-migration"
 
   rds_instance_class        = "db.t4g.micro"
