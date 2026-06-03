@@ -67,6 +67,17 @@ resource "aws_ecs_task_definition" "django" {
         { name = "SLURM_REST_UID", value = "0" },
         { name = "SLURM_REST_GID", value = "0" },
         { name = "SLURM_REST_JOB_ENVIRONMENT", value = jsonencode(["PATH=/opt/aws/pcs/scheduler/slurm-25.05/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]) },
+
+        # Host (compute-node) paths the Slurm adapter translates container paths
+        # into. The cal-mgr job runs on a compute node where the EFS root is
+        # mounted at /ngencerf-app (pcs.tf launch template). HOST_DATA_ROOT is the
+        # translation target (job_executor_slurm.py:
+        # input_file.replace(CONTAINER_DATA_ROOT, HOST_DATA_ROOT)) and the host
+        # side of the singularity bind-mount; the SIF path points at the stable
+        # symlink so SIF swaps never touch Django. Both are os.getenv with no
+        # default in settings.py, so leaving them unset would break a real run.
+        { name = "HOST_DATA_ROOT", value = "/ngencerf-app/data/ngen-cal-data" },
+        { name = "NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-cal-mgr.sif" },
       ] : [])
 
       secrets = [
@@ -78,6 +89,11 @@ resource "aws_ecs_task_definition" "django" {
         {
           sourceVolume  = "data"
           containerPath = "/ngencerf/data"
+          readOnly      = false
+        },
+        {
+          sourceVolume  = "containers"
+          containerPath = "/ngencerf/containers"
           readOnly      = false
         }
       ]
@@ -93,12 +109,34 @@ resource "aws_ecs_task_definition" "django" {
     }
   ])
 
+  # Two EFS volumes via access points (efs.tf). The access point's root_directory
+  # makes Django see an EFS subtree as /ngencerf/data + /ngencerf/containers
+  # (PW-parity layout). transit_encryption is required with an access point;
+  # iam = DISABLED because the access point + EFS SG + the django_efs ClientMount
+  # policy already gate access (no per-access-point IAM enforcement).
   volume {
     name = "data"
 
     efs_volume_configuration {
       file_system_id     = aws_efs_file_system.main.id
       transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.cal_data.id
+        iam             = "DISABLED"
+      }
+    }
+  }
+
+  volume {
+    name = "containers"
+
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.main.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.singularity.id
+        iam             = "DISABLED"
+      }
     }
   }
 }
