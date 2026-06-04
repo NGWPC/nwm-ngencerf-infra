@@ -1,4 +1,4 @@
-.PHONY: help init plan apply destroy smoke fmt lint pre-commit-install _check_env
+.PHONY: help init plan apply destroy bootstrap smoke fmt lint pre-commit-install _check_env
 
 ENV ?= personal-dev
 TERRAFORM_DIR := aws/envs/$(ENV)
@@ -13,6 +13,7 @@ help:
 	@echo "  plan                - terraform plan"
 	@echo "  apply               - terraform apply"
 	@echo "  destroy             - terraform destroy"
+	@echo "  bootstrap           - stage workload SIFs onto EFS (after first apply)"
 	@echo "  smoke               - end-to-end smoke test"
 	@echo "  fmt                 - terraform fmt -recursive"
 	@echo "  lint                - tflint + checkov"
@@ -37,6 +38,9 @@ plan: _check_env
 
 apply: _check_env
 	cd $(TERRAFORM_DIR) && terraform apply
+
+bootstrap: _check_env
+	bash aws/scripts/bootstrap.sh $(ENV)
 
 destroy: _check_env
 	cd $(TERRAFORM_DIR) && terraform destroy

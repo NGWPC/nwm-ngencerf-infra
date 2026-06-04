@@ -65,6 +65,14 @@ module "ngencerf" {
   ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260603004352Z-mpena-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260601051845Z-mpena-aws-migration"
 
+  # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
+  # Each pulls ghcr.io/ngwpc/<name>-sif:<tag> and repoints the <name>.sif symlink.
+  sif_workloads = {
+    "nwm-cal-mgr"  = "20260603180913z-mpena-aws-migration"
+    "nwm-fcst-mgr" = "20260604040557z-mpena-aws-migration"
+    "nwm-verf"     = "20260604040613z-mpena-aws-migration"
+  }
+
   rds_instance_class        = "db.t4g.micro"
   rds_allocated_storage_gib = 20
   redis_node_type           = "cache.t4g.micro"
