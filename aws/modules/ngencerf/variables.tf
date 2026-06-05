@@ -12,7 +12,7 @@ variable "build_compute_ami" {
 
 variable "enable_pcs" {
   type        = bool
-  description = "When true, provisions the AWS PCS (managed Slurm) cluster, compute + login node groups, queue, node IAM instance profile, security group, and launch template (all in pcs.tf). Default false so NGWPC envs stay untouched; set true only in personal-dev until the Slurm-direct submission path is proven."
+  description = "When true, provisions the AWS PCS (managed Slurm) cluster, compute (default + heavy) + login node groups, the two named queues, node IAM instance profile, security group, and launch template (all in pcs.tf). Default false so NGWPC envs stay untouched; set true only in personal-dev until the Slurm-direct submission path is proven."
   default     = false
 }
 
@@ -35,8 +35,20 @@ variable "ngencerf_ui_image" {
 
 variable "pcs_compute_ami_id" {
   type        = string
-  description = "AMI ID for the PCS compute node group. When set (typically the compute_ami_id output from a build_compute_ami run), the compute node group uses this custom AMI; empty falls back to the PCS sample AMI. The login node always uses the sample AMI. Default empty."
+  description = "AMI ID for the PCS compute node groups. When set (typically the compute_ami_id output from a build_compute_ami run), both compute node groups use this custom AMI; empty falls back to the PCS sample AMI. The login node always uses the sample AMI. Default empty."
   default     = ""
+}
+
+variable "pcs_compute_default_instance_type" {
+  type        = string
+  description = "EC2 instance type for the PCS default compute node group, which backs the c5n-9xlarge queue (jobs with <=500 catchments; up to 6 cpus-per-task on a single node). Prod intent is c5n.9xlarge; personal-dev default c6i.2xlarge (8 vCPU) is the cheapest that satisfies 6 cpus-per-task at min size 0 (no idle cost)."
+  default     = "c6i.2xlarge"
+}
+
+variable "pcs_compute_heavy_instance_type" {
+  type        = string
+  description = "EC2 instance type for the PCS heavy compute node group, which backs the r8a-12xlarge queue (jobs with >500 catchments; up to 18 cpus-per-task on a single node). Prod intent is r8a.12xlarge; personal-dev default c6i.8xlarge (32 vCPU) is the cheapest that satisfies 18 cpus-per-task at min size 0 (no idle cost)."
+  default     = "c6i.8xlarge"
 }
 
 variable "private_subnet_ids" {

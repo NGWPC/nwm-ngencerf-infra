@@ -62,6 +62,13 @@ module "ngencerf" {
   # Pin compute to the baked AMI (the compute_ami_id output from the build above).
   pcs_compute_ami_id = "ami-0b19a96fdebfadced"
 
+  # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
+  # Cheap personal-dev picks that still satisfy each path's max cpus-per-task
+  # (default <=6 -> 8 vCPU; heavy <=18 -> 32 vCPU); both autoscale from 0, so no
+  # idle cost. Prod intent is c5n.9xlarge / r8a.12xlarge (set per env there).
+  pcs_compute_default_instance_type = "c6i.2xlarge"
+  pcs_compute_heavy_instance_type   = "c6i.8xlarge"
+
   ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260603004352Z-mpena-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260601051845Z-mpena-aws-migration"
 

@@ -242,13 +242,20 @@ resource "awscc_pcs_cluster" "main" {
   }
 }
 
-# --- Compute node group (awscc) -----------------------------------------
-# Autoscales 0 -> 4 on demand; runs the calibration/forecast/verification
-# jobs. min=0 means $0 of compute when idle — only the controller bills.
+# --- Compute node groups (awscc) ----------------------------------------
+# Two groups, one per Slurm partition the server routes to. ngencerf-server
+# picks the partition by catchment count: <=500 catchments -> the "default"
+# group (c5n-9xlarge queue), >500 -> the "heavy" group (r8a-12xlarge queue).
+# Jobs are single-node (the server emits --nodes=1 --ntasks=1 --cpus-per-task=N),
+# so a group's instance type just has to carry the largest cpus-per-task that
+# path requests (default <=6, heavy <=18). Both autoscale from min=0, so idle
+# cost is $0 — only the controller bills until a job lands. Instance type per
+# group is operator-set (pcs_compute_*_instance_type); personal-dev picks cheap
+# instances, prod intent is c5n.9xlarge / r8a.12xlarge.
 
-resource "awscc_pcs_compute_node_group" "compute" {
+resource "awscc_pcs_compute_node_group" "compute_default" {
   count      = var.enable_pcs ? 1 : 0
-  name       = "compute"
+  name       = "compute-default"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
   ami_id     = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
 
@@ -260,7 +267,32 @@ resource "awscc_pcs_compute_node_group" "compute" {
   iam_instance_profile_arn = aws_iam_instance_profile.pcs_node[0].arn
 
   instance_configs = [{
-    instance_type = "c6i.xlarge"
+    instance_type = var.pcs_compute_default_instance_type
+  }]
+
+  scaling_configuration = {
+    min_instance_count = 0
+    max_instance_count = 4
+  }
+
+  subnet_ids = var.private_subnet_ids
+}
+
+resource "awscc_pcs_compute_node_group" "compute_heavy" {
+  count      = var.enable_pcs ? 1 : 0
+  name       = "compute-heavy"
+  cluster_id = awscc_pcs_cluster.main[0].cluster_id
+  ami_id     = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+
+  custom_launch_template = {
+    template_id = aws_launch_template.pcs[0].id
+    version     = tostring(aws_launch_template.pcs[0].latest_version)
+  }
+
+  iam_instance_profile_arn = aws_iam_instance_profile.pcs_node[0].arn
+
+  instance_configs = [{
+    instance_type = var.pcs_compute_heavy_instance_type
   }]
 
   scaling_configuration = {
@@ -306,17 +338,45 @@ resource "awscc_pcs_compute_node_group" "login" {
   subnet_ids = [var.private_subnet_ids[0]]
 }
 
-# --- Queue (awscc) ------------------------------------------------------
-# Maps to a Slurm partition. Jobs submitted to the "normal" queue land on the
-# compute node group (not login).
+# --- Queues (awscc) -----------------------------------------------------
+# A PCS queue IS a Slurm partition. The server routes each job to a partition
+# BY NAME and rejects any name it didn't emit, so these names must be EXACTLY
+# "c5n-9xlarge" and "r8a-12xlarge" (hyphens, not dots) — they are the partition
+# identifiers in the server's SLURM_NODE_TYPE_RULES, not instance types. Each
+# queue points at its backing compute node group (not login).
+#
+# Default partition: calibration + validation submit WITH an explicit partition,
+# but forecast/hindcast/cold_start/verification submit with NONE, so Slurm needs
+# a default partition for them. AWS PCS exposes Slurm's partition-level "Default"
+# option as a queue-level custom Slurm setting; "Default = YES" makes c5n-9xlarge
+# the partition Slurm uses when a job names none. Exactly one queue may be the
+# default. Docs: AWS PCS "Custom Slurm settings for AWS PCS queues" (OPT_Default)
+# + awscc_pcs_queue slurm_configuration.slurm_custom_settings.
 
-resource "awscc_pcs_queue" "normal" {
+resource "awscc_pcs_queue" "c5n_9xlarge" {
   count      = var.enable_pcs ? 1 : 0
-  name       = "normal"
+  name       = "c5n-9xlarge"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
 
   compute_node_group_configurations = [{
-    compute_node_group_id = awscc_pcs_compute_node_group.compute[0].compute_node_group_id
+    compute_node_group_id = awscc_pcs_compute_node_group.compute_default[0].compute_node_group_id
+  }]
+
+  slurm_configuration = {
+    slurm_custom_settings = [{
+      parameter_name  = "Default"
+      parameter_value = "YES"
+    }]
+  }
+}
+
+resource "awscc_pcs_queue" "r8a_12xlarge" {
+  count      = var.enable_pcs ? 1 : 0
+  name       = "r8a-12xlarge"
+  cluster_id = awscc_pcs_cluster.main[0].cluster_id
+
+  compute_node_group_configurations = [{
+    compute_node_group_id = awscc_pcs_compute_node_group.compute_heavy[0].compute_node_group_id
   }]
 }
 
