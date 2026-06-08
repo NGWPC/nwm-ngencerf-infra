@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 #
-# bootstrap.sh — one-time-per-bring-up SIF staging (see learning
-# docs/design-decisions.md #9).
+# bootstrap.sh — one-time-per-bring-up SIF staging.
 #
 # Runs the standalone sif-sync ECS tasks (modules/ngencerf/sif_sync.tf), one per
 # workload in var.sif_workloads, each oras-pulling its pinned SIF onto EFS

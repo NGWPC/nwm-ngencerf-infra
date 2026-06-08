@@ -27,6 +27,19 @@ data "aws_ssm_parameter" "pcs_ami" {
   name  = "/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id"
 }
 
+# AMI for the two COMPUTE node groups (the login node always uses the sample AMI
+# below — it runs no .sif workloads). Resolution order: an explicit pin wins;
+# else the AMI just baked in-account by Image Builder (build_compute_ami), read
+# straight from the resource so ONE apply builds AND uses it (no manual "read the
+# output, pin it, re-apply" step); else "" so the node group falls back to the
+# PCS sample AMI. The build re-runs only on first apply + image-recipe version
+# bumps, so build_compute_ami can stay true permanently.
+locals {
+  pcs_compute_override_ami_id = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : (
+    var.build_compute_ami ? one(aws_imagebuilder_image.pcs_compute[0].output_resources[0].amis[*].image) : ""
+  )
+}
+
 # --- PCS node IAM -------------------------------------------------------
 # Compute + login instances register with the cluster and are managed over
 # SSM (no SSH). The role NAME must start with "AWSPCS" (or use path
@@ -257,7 +270,7 @@ resource "awscc_pcs_compute_node_group" "compute_default" {
   count      = var.enable_pcs ? 1 : 0
   name       = "compute-default"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id
@@ -282,7 +295,7 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
   count      = var.enable_pcs ? 1 : 0
   name       = "compute-heavy"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id

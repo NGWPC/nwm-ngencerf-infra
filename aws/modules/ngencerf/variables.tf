@@ -1,3 +1,9 @@
+variable "alb_internal" {
+  type        = bool
+  description = "When true, the ALB is internal (scheme = internal) and attaches to private_subnet_ids instead of public_subnet_ids; reach it over the VPC / Transit Gateway path, not the internet. Default false keeps the internet-facing ALB on public subnets. Set true for private-only VPCs that have no public subnets (e.g. the LZA SBOX-Compute VPC); pass public_subnet_ids = [] in that case."
+  default     = false
+}
+
 variable "allowed_hosts" {
   type        = list(string)
   description = "Extra hostnames added to Django's ALLOWED_HOSTS beyond the env's own ALB DNS name (django.tf always includes that). Set the public/custom domain here for prod-tier envs (e.g. [\"ngencerf.example.com\"]); empty is fine for personal-dev, reached directly via the ALB DNS."
@@ -6,7 +12,7 @@ variable "allowed_hosts" {
 
 variable "build_compute_ami" {
   type        = bool
-  description = "When true, provisions the EC2 Image Builder pipeline (imagebuilder.tf) that bakes the custom PCS compute-node AMI from a clean Ubuntu 24.04 base: AWS PCS agent + Slurm 25.05 + Apptainer + amazon-efs-utils. A build runs a ~20-30 min build instance, so it's a separate opt-in from enable_pcs. After building, read the compute_ami_id output and pin it into pcs_compute_ami_id. Default false so no env builds unless asked."
+  description = "When true, provisions the EC2 Image Builder pipeline (imagebuilder.tf) that bakes the custom PCS compute-node AMI from a clean Ubuntu 24.04 base: AWS PCS agent + Slurm 25.05 + Apptainer + amazon-efs-utils. The compute node groups read that freshly baked AMI directly, so a single apply builds AND uses it (no manual pin). The ~20-30 min bake runs only on the first apply and on image-recipe version bumps, not every apply. Default false so NGWPC envs use the PCS sample AMI (or an explicit pcs_compute_ami_id pin) unless asked to build."
   default     = false
 }
 
@@ -35,7 +41,7 @@ variable "ngencerf_ui_image" {
 
 variable "pcs_compute_ami_id" {
   type        = string
-  description = "AMI ID for the PCS compute node groups. When set (typically the compute_ami_id output from a build_compute_ami run), both compute node groups use this custom AMI; empty falls back to the PCS sample AMI. The login node always uses the sample AMI. Default empty."
+  description = "Optional explicit AMI-ID pin for the two compute node groups (e.g. a specific external/golden AMI). When non-empty it wins; when empty the node groups use the in-account Image Builder AMI if build_compute_ami = true, else the PCS sample AMI. The login node always uses the sample AMI. Default empty."
   default     = ""
 }
 
