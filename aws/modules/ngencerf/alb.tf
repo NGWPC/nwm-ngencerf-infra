@@ -1,4 +1,5 @@
-# Public Application Load Balancer fronting the Django Fargate service.
+# Application Load Balancer fronting the Django Fargate service. Internet-facing
+# by default; internal (on private subnets) when var.alb_internal = true.
 # HTTP-only on port 80; HTTPS + ACM via terraform-aws-acm-cross-account
 # lands later. Listener rule /api/* → Django target group; default action
 # forwards to the Nuxt UI target group. idle_timeout = 240 covers the
@@ -13,9 +14,10 @@ module "alb" {
   source  = "terraform-aws-modules/alb/aws"
   version = "~> 9.0"
 
-  name    = "${var.name_prefix}-alb"
-  vpc_id  = var.vpc_id
-  subnets = var.public_subnet_ids
+  name     = "${var.name_prefix}-alb"
+  vpc_id   = var.vpc_id
+  internal = var.alb_internal
+  subnets  = var.alb_internal ? var.private_subnet_ids : var.public_subnet_ids
 
   enable_deletion_protection = var.production
   idle_timeout               = 240

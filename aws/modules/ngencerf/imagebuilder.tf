@@ -113,7 +113,7 @@ resource "aws_imagebuilder_component" "pcs_compute" {
   count    = var.build_compute_ami ? 1 : 0
   name     = "${var.name_prefix}-pcs-compute"
   platform = "Linux"
-  version  = "1.0.2"
+  version  = "1.0.3"
 
   data = <<EOT
 name: ${var.name_prefix}-pcs-compute
@@ -138,7 +138,7 @@ phases:
           commands:
             - set -euxo pipefail
             - cd /tmp
-            - curl -fsSL ${local.pcs_installer_base}/aws-pcs-agent/aws-pcs-agent-v1.4.0-1.tar.gz -o aws-pcs-agent.tar.gz
+            - curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors ${local.pcs_installer_base}/aws-pcs-agent/aws-pcs-agent-v1.4.0-1.tar.gz -o aws-pcs-agent.tar.gz
             - tar -xf aws-pcs-agent.tar.gz
             - cd aws-pcs-agent
             - sudo ./installer.sh
@@ -150,7 +150,7 @@ phases:
           commands:
             - set -euxo pipefail
             - cd /tmp
-            - curl -fsSL ${local.pcs_installer_base}/aws-pcs-slurm/aws-pcs-slurm-25.05-installer-25.05.7-1.tar.gz -o aws-pcs-slurm.tar.gz
+            - curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors ${local.pcs_installer_base}/aws-pcs-slurm/aws-pcs-slurm-25.05-installer-25.05.7-1.tar.gz -o aws-pcs-slurm.tar.gz
             - tar -xf aws-pcs-slurm.tar.gz
             - cd aws-pcs-slurm-25.05-installer
             - sudo ./installer.sh -y
@@ -163,7 +163,7 @@ phases:
             - set -euxo pipefail
             - export DEBIAN_FRONTEND=noninteractive
             - cd /tmp
-            - curl -fsSL https://github.com/apptainer/apptainer/releases/download/v1.5.0/apptainer_1.5.0_amd64.deb -o apptainer.deb
+            - curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors https://github.com/apptainer/apptainer/releases/download/v1.5.0/apptainer_1.5.0_amd64.deb -o apptainer.deb
             - apt-get install -y ./apptainer.deb
             - apptainer --version
       - name: InstallEfsUtils
@@ -176,10 +176,10 @@ phases:
             - export DEBIAN_FRONTEND=noninteractive
             - apt-get update
             - apt-get install -y git binutils libssl-dev pkg-config gettext make gcc g++ cmake wget curl golang-go perl
-            - curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
+            - curl --proto '=https' --tlsv1.2 -sSf --retry 5 --retry-delay 5 --retry-all-errors https://sh.rustup.rs | sh -s -- -y --default-toolchain stable
             - . "$HOME/.cargo/env"
             - cd /tmp
-            - git clone https://github.com/aws/efs-utils
+            - for i in 1 2 3 4 5; do git clone https://github.com/aws/efs-utils && break || sleep 15; done
             - cd efs-utils
             - ./build-deb.sh
             - apt-get install -y ./build/amazon-efs-utils*deb
@@ -195,7 +195,7 @@ EOT
 resource "aws_imagebuilder_image_recipe" "pcs_compute" {
   count        = var.build_compute_ami ? 1 : 0
   name         = "${var.name_prefix}-pcs-compute"
-  version      = "1.0.2"
+  version      = "1.0.3"
   parent_image = nonsensitive(data.aws_ssm_parameter.ubuntu_2404[0].value)
 
   component {

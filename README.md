@@ -13,13 +13,14 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 ## Environments
 
-Eight environments — one scratch env + seven NGWPC envs — each its own root module under `aws/envs/<...>/` with its own state file. All eight call the same shared module at `aws/modules/ngencerf/`. The module accepts `vpc_id` + `subnet_ids` as inputs; `personal-dev` creates its own VPC, and the other NGWPC envs look up the LZA-laid VPC via `data` sources.
+Nine environments — one scratch env + eight NGWPC envs — each its own root module under `aws/envs/<...>/` with its own state file. All nine call the same shared module at `aws/modules/ngencerf/`. The module accepts `vpc_id` + `subnet_ids` as inputs; `personal-dev` creates its own VPC, and the NGWPC envs (`sandbox`, `test/*`, `optimization/*`) look up their LZA-laid VPC via `data` sources.
 
-Sizing is two-tier: `personal-dev` + `test/dev` are smallest (cheap, single-AZ); the other six are sized identically at prod-tier (`db.r7g.large` RDS, `cache.r7g.large` Redis).
+Sizing is two-tier: `personal-dev`, `test/dev`, and `sandbox` are smallest (cheap, single-AZ); the other six are sized identically at prod-tier (`db.r7g.large` RDS, `cache.r7g.large` Redis).
 
 | Env                  | Account                | VPC source       | RDS class      |
 |----------------------|------------------------|------------------|----------------|
 | `personal-dev`       | personal sandbox       | self-created     | db.t4g.micro   |
+| `sandbox`            | NGWPC Sandbox          | LZA data lookup  | db.t4g.micro   |
 | `test/dev`           | NGWPC Test             | LZA data lookup  | db.t4g.micro   |
 | `test/dev2`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
 | `test/perf`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
@@ -69,7 +70,7 @@ make destroy ENV=personal-dev # tear it down (saves cost)
 
 ## Day-to-day commands
 
-All targets accept `ENV=<env-path>` (default `personal-dev`). Valid env paths: `personal-dev`, `test/dev`, `test/dev2`, `test/perf`, `test/integration`, `optimization/ea`, `optimization/uat`, `optimization/uat2`.
+All targets accept `ENV=<env-path>` (default `personal-dev`). Valid env paths: `personal-dev`, `sandbox`, `test/dev`, `test/dev2`, `test/perf`, `test/integration`, `optimization/ea`, `optimization/uat`, `optimization/uat2`.
 
 ```bash
 make help                          # list all targets
@@ -150,7 +151,7 @@ Concretely:
 ```text
 nwm-ngencerf-infra/
 ├── README.md                       this file
-├── Makefile                        dev shortcuts (ENV=personal-dev|test/dev|test/dev2|test/perf|test/integration|optimization/ea|optimization/uat|optimization/uat2)
+├── Makefile                        dev shortcuts (ENV=personal-dev|sandbox|test/dev|test/dev2|test/perf|test/integration|optimization/ea|optimization/uat|optimization/uat2)
 ├── .gitignore                      Terraform-aware ignores; secrets never committed
 ├── .pre-commit-config.yaml         fmt/validate/tflint/checkov/gitleaks on commit
 ├── .tflint.hcl                     Terraform linter config
@@ -190,6 +191,7 @@ nwm-ngencerf-infra/
     │   │   ├── outputs.tf          re-exports module outputs (alb_dns_name, vpc_id, subnets)
     │   │   ├── backend.hcl.example per-account backend template
     │   │   └── terraform.tfvars.example
+    │   ├── sandbox/                NGWPC Sandbox account (consumes LZA VPC; internal ALB; PCS)
     │   ├── test/                   NGWPC Test account (consumes LZA VPC)
     │   │   ├── dev/                dev-sized env
     │   │   ├── dev2/               prod-tier env

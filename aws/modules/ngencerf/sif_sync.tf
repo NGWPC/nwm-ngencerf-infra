@@ -1,10 +1,10 @@
 # SIF staging (sif-sync) — a one-off BOOTSTRAP task that seeds the shared EFS
 # with the calibration workload .sif so jobs can run. A freshly created EFS is
 # empty; this loads a standard, pinned .sif onto it ONCE at bring-up. It is a
-# bootstrap concern, NOT a deploy/release one (see learning
-# docs/design-decisions.md #9): Terraform creates the task here (existence);
-# `make bootstrap` runs it once after `apply` (Twelve-Factor: a one-off admin
-# process, kept out of `apply` per HashiCorp's "provisioners are a last resort").
+# bootstrap concern, NOT a deploy/release one: Terraform creates the task here
+# (existence); `make bootstrap` runs it once after `apply` (Twelve-Factor: a
+# one-off admin process, kept out of `apply` per HashiCorp's "provisioners are
+# a last resort").
 # Rolling out a new .sif version later is a separate release process that re-runs
 # this same task with a new pinned tag.
 #
