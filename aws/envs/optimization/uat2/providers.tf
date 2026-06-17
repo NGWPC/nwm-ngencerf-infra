@@ -6,6 +6,8 @@ provider "aws" {
       Project     = "ngencerf"
       ManagedBy   = "Terraform"
       Repo        = "nwm-ngencerf-infra"
+      Team        = "nwm"
+      POC         = "Miguel Pena"
       Owner       = var.owner
       Environment = "optimization-uat2"
     }

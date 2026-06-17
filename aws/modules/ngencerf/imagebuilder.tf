@@ -66,6 +66,16 @@ resource "aws_iam_role_policy_attachment" "imagebuilder_ssm" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+# Same Session Manager logging policy the PCS nodes get, on the transient build
+# instance's profile (it's an EC2 instance the Sandbox rules of the road cover).
+# Always attached when an AMI build runs; the ARN is the account-scoped
+# session_manager_logging_policy_arn local (see pcs.tf).
+resource "aws_iam_role_policy_attachment" "imagebuilder_session_logging" {
+  count      = var.build_compute_ami ? 1 : 0
+  role       = aws_iam_role.imagebuilder[0].name
+  policy_arn = local.session_manager_logging_policy_arn
+}
+
 resource "aws_iam_instance_profile" "imagebuilder" {
   count = var.build_compute_ami ? 1 : 0
   name  = "${var.name_prefix}-imagebuilder"
@@ -227,6 +237,10 @@ resource "aws_imagebuilder_infrastructure_configuration" "pcs_compute" {
   security_group_ids            = [aws_security_group.imagebuilder[0].id]
   terminate_instance_on_failure = true
 
+  # Tag the transient build instance: the Sandbox SCP enforces the Team tag on
+  # instance creation, so an untagged build instance would fail to launch under it.
+  resource_tags = var.tags
+
   instance_metadata_options {
     http_tokens = "required"
   }
@@ -244,10 +258,10 @@ resource "aws_imagebuilder_distribution_configuration" "pcs_compute" {
 
     ami_distribution_configuration {
       name = "${var.name_prefix}-pcs-compute-{{ imagebuilder:buildDate }}"
-      ami_tags = {
+      ami_tags = merge(var.tags, {
         Name = "${var.name_prefix}-pcs-compute"
         Role = "pcs-compute"
-      }
+      })
     }
   }
 }

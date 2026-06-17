@@ -48,6 +48,16 @@ resource "aws_ecs_task_definition" "django" {
         { name = "CERF_SERVER_DATABASE_USER", value = "ngencerf" },
         { name = "CERF_SERVER_DATABASE_HOST", value = module.rds.db_instance_address },
         { name = "REDIS_URL", value = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379/1" },
+
+        # EDFS (NOAA Enterprise Data Services) — at gage-create time (save_gage_tab)
+        # the server fetches hydrofabric geopackages, observational streamflow, and
+        # module-parameter metadata from here. settings.py reads both with os.getenv
+        # and NO default, so unset makes the server raise
+        # ValueError("Invalid environment: 'None'") before any fetch. ENTERPRISE_DATA_ENV
+        # ('test'/'oe') also selects which EDFS host the MSWM client calls. The host is
+        # private NOAA infra with no public DNS record — the VPC needs a resolver path.
+        { name = "ENTERPRISE_DATA_URL", value = var.enterprise_data_url },
+        { name = "ENTERPRISE_DATA_ENV", value = var.enterprise_data_env },
         ], var.enable_pcs ? [
         # Slurm REST API: Django POSTs jobs to slurmrestd on the PCS
         # controller. JOB_EXECUTION_MODE flips to SLURM with the REST-adapter

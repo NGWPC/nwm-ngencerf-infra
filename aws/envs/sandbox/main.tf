@@ -9,6 +9,23 @@
 # baked AMI directly, so a single apply builds AND uses it — no manual pin
 # (see the enable_pcs block below).
 
+# Common tag set, single-sourced here. Used by the provider default_tags
+# (providers.tf) for all aws-provider resources AND passed to the module
+# (tags = local.common_tags) so the awscc PCS resources, which default_tags
+# can't reach, carry the same tags. Team is the value the Sandbox account
+# enforces via SCP; POC is a contactable owner per the Sandbox rules of the road.
+locals {
+  common_tags = {
+    Project     = "ngencerf"
+    ManagedBy   = "Terraform"
+    Repo        = "nwm-ngencerf-infra"
+    Team        = "nwm"
+    POC         = "Miguel Pena"
+    Owner       = var.owner
+    Environment = "sandbox"
+  }
+}
+
 data "aws_vpc" "sbox" {
   filter {
     name   = "tag:Name"
@@ -31,6 +48,11 @@ module "ngencerf" {
   source = "../../modules/ngencerf"
 
   name_prefix = "ngencerf-sandbox"
+
+  # Same tag map providers.tf feeds to default_tags; the module applies it to the
+  # awscc PCS resources (and launched instances/volumes + the built AMI) that
+  # default_tags can't reach.
+  tags = local.common_tags
 
   vpc_id             = data.aws_vpc.sbox.id
   private_subnet_ids = data.aws_subnets.private.ids
@@ -59,14 +81,21 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "c6i.8xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260603004352Z-mpena-aws-migration"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260601051845Z-mpena-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260617011357Z-mpena-aws-migration"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
+
+  # EDFS (NOAA Enterprise Data Services) — Sandbox uses the Test data services.
+  # Required by save_gage_tab (unset -> ValueError "Invalid environment: 'None'").
+  # The host resolves from this VPC only once EDFS DNS is wired (a Route 53
+  # resolver rule / private hosted zone) into SBOX-Compute.
+  enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/"
+  enterprise_data_env = "test"
 
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260603180913z-mpena-aws-migration"
-    "nwm-fcst-mgr" = "20260604040557z-mpena-aws-migration"
-    "nwm-verf"     = "20260604040613z-mpena-aws-migration"
+    "nwm-cal-mgr"  = "20260616203930Z-mpena-aws-migration"
+    "nwm-fcst-mgr" = "20260616203335Z-mpena-aws-migration"
+    "nwm-verf"     = "20260616203352Z-mpena-aws-migration"
   }
 
   rds_instance_class        = "db.t4g.micro"
