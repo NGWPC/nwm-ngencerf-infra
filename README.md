@@ -82,6 +82,34 @@ make fmt                           # terraform fmt -recursive
 make lint                          # tflint + checkov
 ```
 
+## Dev deploy (ad-hoc container update, no Terraform)
+
+Each env pins the server and UI image tags in its `main.tf` (`ngencerf_server_image`,
+`ngencerf_ui_image`), so `terraform apply` is the source of truth for what runs. For fast
+dev iteration you can also roll a running ECS service to a new image **without** an apply —
+register a new task-def revision and point the service at it:
+
+```bash
+export AWS_PROFILE=<env-profile> AWS_REGION=us-east-1
+PREFIX=ngencerf-sandbox            # cluster = $PREFIX-cluster; services = $PREFIX-django / $PREFIX-nuxt
+
+# restart / re-pull the current image
+aws ecs update-service --cluster "$PREFIX-cluster" --service "$PREFIX-django" --force-new-deployment
+
+# deploy a specific image tag onto the running service
+aws ecs describe-task-definition --task-definition "$PREFIX-django" --query taskDefinition --output json \
+  | jq --arg I "ghcr.io/ngwpc/ngencerf-server:<tag>" \
+      'del(.taskDefinitionArn,.revision,.status,.requiresAttributes,.compatibilities,.registeredAt,.registeredBy,.deregisteredAt) | .containerDefinitions[0].image=$I' \
+  > /tmp/td.json
+NEWTD=$(aws ecs register-task-definition --cli-input-json file:///tmp/td.json --query 'taskDefinition.taskDefinitionArn' --output text)
+aws ecs update-service --cluster "$PREFIX-cluster" --service "$PREFIX-django" --task-definition "$NEWTD"
+```
+
+These ad-hoc revisions are invisible to Terraform — the **next `terraform apply` reverts the
+service to the tag pinned in `main.tf`**. To make a build permanent, bump the image var in the
+env's `main.tf` and apply. (Whether a deploy pipeline should instead own the running image via
+a `lifecycle { ignore_changes = [task_definition] }` rule is an open decision.)
+
 ## Cost (personal-dev, fully running 24×7)
 
 ~$4.10/day (~$123/month) with the full Day-4 stack up. Biggest fixed shares: NAT Gateway (~$1.10/day), ALB (~$0.55/day), WAF (~$0.37/day for the web ACL + 6 rules), Fargate task (~$0.50/day for 0.5 vCPU / 2 GiB), RDS + Redis + EFS (~$0.40/day combined).

@@ -38,6 +38,11 @@ locals {
   pcs_compute_override_ami_id = var.pcs_compute_ami_id != "" ? var.pcs_compute_ami_id : (
     var.build_compute_ami ? one(aws_imagebuilder_image.pcs_compute[0].output_resources[0].amis[*].image) : ""
   )
+
+  # The LZA-managed Session Manager logging policy, present in every NGWPC LZA
+  # account. Attached to compute instance profiles (PCS nodes + the Image Builder
+  # build instance) so SSM sessions log centrally, per the Sandbox rules of the road.
+  session_manager_logging_policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/AWSAccelerator-SessionManagerLogging"
 }
 
 # --- PCS node IAM -------------------------------------------------------
@@ -89,6 +94,18 @@ resource "aws_iam_role_policy_attachment" "pcs_node_cloudwatch" {
   count      = var.enable_pcs ? 1 : 0
   role       = aws_iam_role.pcs_node[0].name
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+}
+
+# Sandbox rules of the road require the LZA-managed Session Manager logging
+# policy on every compute instance profile so SSM sessions are logged to the
+# central destination. Always attached when PCS is enabled (no opt-out); the
+# ARN is the account-scoped session_manager_logging_policy_arn local above, so
+# it resolves to this account's AWSAccelerator-SessionManagerLogging policy.
+# Assumes an LZA-governed account, which every NGWPC env this module targets is.
+resource "aws_iam_role_policy_attachment" "pcs_node_session_logging" {
+  count      = var.enable_pcs ? 1 : 0
+  role       = aws_iam_role.pcs_node[0].name
+  policy_arn = local.session_manager_logging_policy_arn
 }
 
 resource "aws_iam_instance_profile" "pcs_node" {
@@ -206,11 +223,17 @@ EOT
     http_tokens   = "required"
   }
 
+  # Tag the launched instances AND their EBS volumes explicitly: default_tags
+  # don't reach instances/volumes created at runtime by PCS autoscaling, so the
+  # common tag set (incl. the SCP-enforced Team tag) is merged in here.
   tag_specifications {
     resource_type = "instance"
-    tags = {
-      Name = "${var.name_prefix}-pcs-node"
-    }
+    tags          = merge(var.tags, { Name = "${var.name_prefix}-pcs-node" })
+  }
+
+  tag_specifications {
+    resource_type = "volume"
+    tags          = merge(var.tags, { Name = "${var.name_prefix}-pcs-node" })
   }
 }
 
@@ -250,9 +273,19 @@ resource "awscc_pcs_cluster" "main" {
     }
   }
 
-  tags = {
-    Name = "${var.name_prefix}-pcs"
-  }
+  tags = merge(var.tags, { Name = "${var.name_prefix}-pcs" })
+
+  # PCS reads this cluster's security group during CreateCluster and rejects an
+  # SG with no outbound rules. The SG's egress and ingress are separate
+  # aws_security_group_rule attachment resources, so without an explicit
+  # dependency Terraform creates the cluster in parallel with them — a race that
+  # intermittently fails with "At least one security group must have outbound
+  # rules to allow outgoing traffic". Order the cluster after both rules so the
+  # SG is fully configured before PCS validates it.
+  depends_on = [
+    aws_security_group_rule.pcs_egress_all,
+    aws_security_group_rule.pcs_ingress_self,
+  ]
 }
 
 # --- Compute node groups (awscc) ----------------------------------------
@@ -289,6 +322,8 @@ resource "awscc_pcs_compute_node_group" "compute_default" {
   }
 
   subnet_ids = var.private_subnet_ids
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-compute-default" })
 }
 
 resource "awscc_pcs_compute_node_group" "compute_heavy" {
@@ -314,6 +349,8 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
   }
 
   subnet_ids = var.private_subnet_ids
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-compute-heavy" })
 }
 
 # --- Login node group (awscc) -------------------------------------------
@@ -349,6 +386,8 @@ resource "awscc_pcs_compute_node_group" "login" {
   }
 
   subnet_ids = [var.private_subnet_ids[0]]
+
+  tags = merge(var.tags, { Name = "${var.name_prefix}-login" })
 }
 
 # --- Queues (awscc) -----------------------------------------------------
@@ -381,6 +420,8 @@ resource "awscc_pcs_queue" "c5n_9xlarge" {
       parameter_value = "YES"
     }]
   }
+
+  tags = var.tags
 }
 
 resource "awscc_pcs_queue" "r8a_12xlarge" {
@@ -391,6 +432,8 @@ resource "awscc_pcs_queue" "r8a_12xlarge" {
   compute_node_group_configurations = [{
     compute_node_group_id = awscc_pcs_compute_node_group.compute_heavy[0].compute_node_group_id
   }]
+
+  tags = var.tags
 }
 
 # --- Slurm REST API wiring: Django (web tier) -> slurmrestd -------------

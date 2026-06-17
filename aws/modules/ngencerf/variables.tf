@@ -22,6 +22,23 @@ variable "enable_pcs" {
   default     = false
 }
 
+variable "enterprise_data_env" {
+  type        = string
+  description = "EDFS / NOAA Enterprise Data Services environment token the server passes to the MSWM hydrofabric client: 'test' or 'oe'. Selects which EDFS host MSWM calls (test -> edfs.test..., oe -> edfs.oe...) and is validated by save_gage_tab — unset makes the server raise ValueError(\"Invalid environment: 'None'\"). 'test' for the Test/Sandbox EDFS, 'oe' for Optimization. Keep in sync with enterprise_data_url."
+  default     = "test"
+
+  validation {
+    condition     = contains(["test", "oe"], var.enterprise_data_env)
+    error_message = "enterprise_data_env must be 'test' or 'oe'."
+  }
+}
+
+variable "enterprise_data_url" {
+  type        = string
+  description = "Base URL of the EDFS / NOAA Enterprise Data Services endpoint the server fetches hydrofabric geopackages, observational streamflow, and module-parameter metadata from at gage-create time (ENTERPRISE_DATA_URL in settings.py — os.getenv with no in-image default). Test: http://edfs.test.nextgenwaterprediction.com/ ; Optimization: https://edfs.oe.nextgenwaterprediction.com/ . Must match enterprise_data_env. EDFS is private NOAA infra with no public DNS record, so the env's VPC must have a resolver path to it."
+  default     = "http://edfs.test.nextgenwaterprediction.com/"
+}
+
 variable "name_prefix" {
   type        = string
   description = "Prefix for resource names. Callers should include environment suffix (e.g., \"ngencerf-personal-dev\", \"ngencerf-test-dev\") so resource names don't collide when multiple envs share an account."
@@ -94,6 +111,12 @@ variable "redis_node_type" {
 variable "sif_workloads" {
   type        = map(string)
   description = "Workload SIFs to stage onto EFS for AWS PCS jobs: map of workload name -> OCI artifact tag. For each entry the sif-sync bootstrap task (sif_sync.tf) pulls ghcr.io/ngwpc/<name>-sif:<tag> onto EFS /singularity, writes <name>-<tag>.sif, and repoints the stable <name>.sif symlink. Names follow the workload images, e.g. \"nwm-cal-mgr\", \"nwm-fcst-mgr\", \"nwm-verf\". Only used when enable_pcs = true; staged via `make bootstrap`. Default empty (no SIFs staged)."
+  default     = {}
+}
+
+variable "tags" {
+  type        = map(string)
+  description = "Common tags applied to resources the aws-provider default_tags can't reach: the awscc PCS resources (cluster, compute + login node groups, queues), the PCS launch-template instances + volumes, and the Image Builder output AMI + build instance. Pass the SAME map the env's provider default_tags uses so every resource carries an identical set (incl. the Team tag the Sandbox account enforces via SCP). Default empty so envs relying solely on default_tags (e.g. personal-dev) are unchanged."
   default     = {}
 }
 
