@@ -27,3 +27,13 @@ output "sif_sync_task_definitions" {
   value       = { for k, td in aws_ecs_task_definition.sif_sync : k => td.family }
   description = "Map of workload name -> sif-sync task definition family (empty unless enable_pcs and sif_workloads set). bootstrap.sh runs each to stage that workload's SIF onto EFS."
 }
+
+output "static_data_security_group_id" {
+  value       = var.enable_pcs ? aws_security_group.static_data[0].id : null
+  description = "Security group for the static-data bootstrap task (enable_pcs only). Used by bootstrap.sh."
+}
+
+output "static_data_task_definition" {
+  value       = var.enable_pcs ? aws_ecs_task_definition.static_data[0].family : null
+  description = "Static-data bootstrap task definition family (null unless enable_pcs). bootstrap.sh runs it to sync the ngen static-input tree from ngwpc-dev onto EFS."
+}
