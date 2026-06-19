@@ -139,6 +139,22 @@ data "aws_iam_policy_document" "django_s3" {
       "arn:aws:s3:::ngwpc-ngencerf-archive/*",
     ]
   }
+
+  # Read-only on ngwpc-forcing (Data account). The data-assimilation engine
+  # reads SNODAS / SMAP / SNOTEL observation CSVs from s3://ngwpc-forcing/
+  # (snodas_csv, smap_csv, snotel_csv) at validation time. Read-only — the
+  # engine never writes here. Same consumer-side IAM half as above; the
+  # bucket-side grant is set on the Data account.
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::ngwpc-forcing"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::ngwpc-forcing/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "django_s3" {
