@@ -81,7 +81,7 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "c6i.8xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260617011357Z-mpena-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260618225541Z-mpena-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
 
   # EDFS (NOAA Enterprise Data Services) — Sandbox uses the Test data services.

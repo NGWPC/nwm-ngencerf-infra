@@ -28,16 +28,6 @@ output "sif_sync_task_definitions" {
   description = "Map of workload name -> sif-sync task definition family. bootstrap.sh runs each via `make bootstrap`."
 }
 
-output "static_data_security_group_id" {
-  value       = module.ngencerf.static_data_security_group_id
-  description = "Security group for the static-data bootstrap task. Used by bootstrap.sh."
-}
-
-output "static_data_task_definition" {
-  value       = module.ngencerf.static_data_task_definition
-  description = "Static-data bootstrap task definition family. bootstrap.sh runs it via `make bootstrap` / `make load-static`."
-}
-
 output "vpc_id" {
   value       = data.aws_vpc.sbox.id
   description = "VPC ID (LZA-laid SBOX-Compute VPC)."
