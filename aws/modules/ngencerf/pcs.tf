@@ -108,6 +108,35 @@ resource "aws_iam_role_policy_attachment" "pcs_node_session_logging" {
   policy_arn = local.session_manager_logging_policy_arn
 }
 
+# Cross-account read on the Data-account ngwpc-dev bucket so the login node can
+# sync the ngen static-input tree onto EFS at bootstrap (make bootstrap /
+# make load-static run the load over SSM on the login node, which shares this
+# node role). The Data side must also grant this role (bucket policy / assumable
+# role) for the read to succeed. AC-6: read-only, scoped to the static prefixes.
+data "aws_iam_policy_document" "pcs_node_static_data_s3" {
+  count = var.enable_pcs ? 1 : 0
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::ngwpc-dev"]
+  }
+  statement {
+    effect  = "Allow"
+    actions = ["s3:GetObject"]
+    resources = [
+      "arn:aws:s3:::ngwpc-dev/ngen-static-files/*",
+      "arn:aws:s3:::ngwpc-dev/rte-test-data/esmf/*",
+    ]
+  }
+}
+
+resource "aws_iam_role_policy" "pcs_node_static_data_s3" {
+  count  = var.enable_pcs ? 1 : 0
+  name   = "ngwpc-dev-static-read"
+  role   = aws_iam_role.pcs_node[0].name
+  policy = data.aws_iam_policy_document.pcs_node_static_data_s3[0].json
+}
+
 resource "aws_iam_instance_profile" "pcs_node" {
   count = var.enable_pcs ? 1 : 0
   name  = "AWSPCS-${var.name_prefix}-node"
