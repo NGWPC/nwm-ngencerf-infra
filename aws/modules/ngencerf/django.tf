@@ -1,6 +1,6 @@
 # Django Fargate task + service. Image ghcr.io/ngwpc/ngencerf-server:latest is
-# built from Dockerfile.production-pw — RDS CA bundle is baked into the image;
-# all config is env-var-driven (no local_settings.py — settings.py reads
+# built from Dockerfile.production-pw. RDS CA bundle is baked into the image;
+# all config is env-var-driven (no local_settings.py, settings.py reads
 # everything via os.getenv). We only inject env vars + secrets here. EFS
 # mounted at /ngencerf/data per the CONTAINER_DATA_ROOT constant in
 # cerfServer/settings.py:300. assign_public_ip = false; egress via NAT.
@@ -49,13 +49,13 @@ resource "aws_ecs_task_definition" "django" {
         { name = "CERF_SERVER_DATABASE_HOST", value = module.rds.db_instance_address },
         { name = "REDIS_URL", value = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379/1" },
 
-        # EDFS (NOAA Enterprise Data Services) — at gage-create time (save_gage_tab)
+        # EDFS (NOAA Enterprise Data Services): at gage-create time (save_gage_tab)
         # the server fetches hydrofabric geopackages, observational streamflow, and
         # module-parameter metadata from here. settings.py reads both with os.getenv
         # and NO default, so unset makes the server raise
         # ValueError("Invalid environment: 'None'") before any fetch. ENTERPRISE_DATA_ENV
         # ('test'/'oe') also selects which EDFS host the MSWM client calls. The host is
-        # private NOAA infra with no public DNS record — the VPC needs a resolver path.
+        # private NOAA infra with no public DNS record, so the VPC needs a resolver path.
         { name = "ENTERPRISE_DATA_URL", value = var.enterprise_data_url },
         { name = "ENTERPRISE_DATA_ENV", value = var.enterprise_data_env },
         ], var.enable_pcs ? [
@@ -76,7 +76,7 @@ resource "aws_ecs_task_definition" "django" {
         { name = "SLURM_REST_USER", value = "root" },
         { name = "SLURM_REST_UID", value = "0" },
         { name = "SLURM_REST_GID", value = "0" },
-        { name = "SLURM_REST_JOB_ENVIRONMENT", value = jsonencode(["PATH=/opt/aws/pcs/scheduler/slurm-25.05/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]) },
+        { name = "SLURM_REST_JOB_ENVIRONMENT", value = jsonencode(["PATH=/opt/aws/pcs/scheduler/slurm-25.11/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]) },
 
         # Host (compute-node) paths the Slurm adapter translates container paths
         # into. The cal-mgr job runs on a compute node where the EFS root is

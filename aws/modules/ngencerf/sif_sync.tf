@@ -1,4 +1,4 @@
-# SIF staging (sif-sync) — a one-off BOOTSTRAP task that seeds the shared EFS
+# SIF staging (sif-sync): a one-off BOOTSTRAP task that seeds the shared EFS
 # with the calibration workload .sif so jobs can run. A freshly created EFS is
 # empty; this loads a standard, pinned .sif onto it ONCE at bring-up. It is a
 # bootstrap concern, NOT a deploy/release one: Terraform creates the task here
@@ -8,12 +8,12 @@
 # Rolling out a new .sif version later is a separate release process that re-runs
 # this same task with a new pinned tag.
 #
-# Mechanism: a STANDALONE ECS task (RunTask, runs-to-completion — not a service)
+# Mechanism: a STANDALONE ECS task (RunTask, runs-to-completion, not a service)
 # using the oras CLI (the standard OCI-artifact client) to pull
 # ghcr.io/ngwpc/nwm-cal-mgr-sif:<tag> straight onto the EFS singularity access
 # point, then repoint the stable nwm-cal-mgr.sif symlink. oras (not apptainer)
 # because this only DOWNLOADS the artifact (the -sif package is a public oras
-# artifact) — no container runtime needed inside the task. All gated on
+# artifact), so no container runtime needed inside the task. All gated on
 # enable_pcs so NGWPC envs are untouched.
 # SC-7: dedicated egress-only SG, private subnet. AC-6: minimal task role.
 
@@ -112,11 +112,11 @@ resource "aws_iam_role_policy" "sif_sync_efs" {
 }
 
 # Standalone task definition, one per workload (for_each over var.sif_workloads).
-# No service — run on demand by `make bootstrap` (aws/scripts/bootstrap.sh).
+# No service. Run on demand by `make bootstrap` (aws/scripts/bootstrap.sh).
 # Reuses the shared ECS execution role (pulls the public oras image + writes
 # logs; no secrets). Mounts only the singularity access point; writes as root
 # (user 0) to the access-point root (owner 0/0), matching how the compute nodes
-# write to the same EFS. each.key is the workload name (e.g. nwm-cal-mgr) — both
+# write to the same EFS. each.key is the workload name (e.g. nwm-cal-mgr): both
 # the GHCR repo base (<name>-sif) and the staged symlink (<name>.sif); each.value
 # is the OCI tag.
 resource "aws_ecs_task_definition" "sif_sync" {

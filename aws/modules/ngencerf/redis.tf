@@ -1,5 +1,5 @@
 # ElastiCache Redis for Django session/cache backend.
-# Replication-group API even for single-node — keeps the upgrade path to
+# Replication-group API even for single-node, keeps the upgrade path to
 # multi-node prod clean. SC-28: at-rest with env CMK. SC-13: in-transit TLS.
 # AC-6: SG-locked to web tier (redis_ingress_web in security_groups.tf).
 # Native Redis snapshots in prod; no AWS Backup tag (cache, not system-of-record).

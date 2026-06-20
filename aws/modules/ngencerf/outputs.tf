@@ -10,7 +10,7 @@ output "alb_dns_name" {
 
 output "compute_ami_id" {
   value       = var.build_compute_ami ? one(aws_imagebuilder_image.pcs_compute[0].output_resources[0].amis[*].image) : null
-  description = "AMI ID of the custom PCS compute-node image once built (build_compute_ami = true), else null. Informational — the compute node groups already consume this AMI directly; no manual pin needed."
+  description = "AMI ID of the custom PCS compute-node image once built (build_compute_ami = true), else null. Informational: the compute node groups already consume this AMI directly; no manual pin needed."
 }
 
 output "ecs_cluster_name" {

@@ -18,7 +18,7 @@ resource "aws_cloudwatch_log_group" "nuxt" {
   kms_key_id        = aws_kms_key.main.arn
 }
 
-# WAF logging target. Name MUST start with "aws-waf-logs-" — AWS WAF service
+# WAF logging target. Name MUST start with "aws-waf-logs-". AWS WAF service
 # rejects PutLoggingConfiguration if the log group name doesn't match that
 # prefix. The KMS key policy in secrets.tf grants the logs service principal
 # access to this group name explicitly.

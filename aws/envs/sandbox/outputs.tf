@@ -5,7 +5,7 @@ output "alb_dns_name" {
 
 output "compute_ami_id" {
   value       = module.ngencerf.compute_ami_id
-  description = "Custom PCS compute-node AMI ID once built (build_compute_ami = true). Informational — the compute node groups already consume this AMI directly in the same apply; no manual pin needed."
+  description = "Custom PCS compute-node AMI ID once built (build_compute_ami = true). Informational, because the compute node groups already consume this AMI directly in the same apply; no manual pin needed."
 }
 
 output "ecs_cluster_name" {

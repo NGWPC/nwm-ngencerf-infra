@@ -25,7 +25,7 @@ resource "aws_efs_file_system" "main" {
 }
 
 # One mount target per private-subnet AZ. ECS tasks reach EFS via the mount
-# target in their own AZ — required for the NFS client to connect.
+# target in their own AZ, required for the NFS client to connect.
 resource "aws_efs_mount_target" "main" {
   count           = length(var.private_subnet_ids)
   file_system_id  = aws_efs_file_system.main.id
@@ -35,7 +35,7 @@ resource "aws_efs_mount_target" "main" {
 
 # EFS access points for the Django Fargate task. Each exposes a subtree of the
 # one filesystem as its own root and AUTO-CREATES that subtree on first mount
-# (creation_info) — so a fresh EFS needs no manual mkdir. No posix_user block:
+# (creation_info), so a fresh EFS needs no manual mkdir. No posix_user block:
 # access is NOT pinned to a fixed uid, so the Django task (root) and the PCS
 # compute nodes (root, raw EFS mount) read/write the same files with no uid
 # mismatch. Compute nodes mount the EFS ROOT directly (pcs.tf launch template),

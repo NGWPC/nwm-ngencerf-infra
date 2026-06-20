@@ -54,7 +54,7 @@ resource "aws_s3_bucket_public_access_block" "tfstate" {
 }
 
 # State locking is handled by S3's native conditional-write lock
-# (`use_lockfile = true` in backend.hcl). DynamoDB is NOT needed —
-# that pattern is deprecated as of Terraform 1.10. See:
+# (`use_lockfile = true` in backend.hcl). DynamoDB is NOT needed.
+# That pattern is deprecated as of Terraform 1.10. See:
 #   https://developer.hashicorp.com/terraform/language/backend/s3
 #   https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/backend.html

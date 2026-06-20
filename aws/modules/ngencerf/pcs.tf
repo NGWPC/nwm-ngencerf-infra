@@ -1,19 +1,18 @@
-# AWS PCS (Parallel Computing Service) — managed Slurm.
+# AWS PCS (Parallel Computing Service): managed Slurm.
 #
 # PCS resources live in the `awscc` (AWS Cloud Control) provider, NOT the
-# classic `aws` provider — `aws` has no PCS resources. `awscc` is AWS's
+# classic `aws` provider. The `aws` provider has no PCS resources. `awscc` is AWS's
 # auto-generated provider over the Cloud Control API; AWS officially blesses
 # it for PCS Terraform. The two providers run side by side: the cluster,
 # compute node groups, and queue come from `awscc`; the supporting IAM,
 # security group, launch template, and AMI lookup stay in `aws`.
 #
-# Everything here is gated behind var.enable_pcs (default false). Only
-# personal-dev sets it true today; NGWPC envs are untouched until the
-# Slurm-direct submission path is proven.
+# Everything here is gated behind var.enable_pcs (default false). It is set
+# true per env that runs PCS (sandbox today); non-PCS envs are untouched.
 #
 # Submission model = Slurm REST API: Django (on Fargate) POSTs jobs
 # to slurmrestd on the controller (port 6820, JWT). The login node group below
-# is kept as a testing/ops on-ramp — SSM in to drive Slurm by hand (verify
+# is kept as a testing/ops on-ramp (SSM in to drive Slurm by hand: verify
 # scheduling, debug). It is NOT in the submission path; Django uses the REST
 # API above.
 
@@ -28,7 +27,7 @@ data "aws_ssm_parameter" "pcs_ami" {
 }
 
 # AMI for the two COMPUTE node groups (the login node always uses the sample AMI
-# below — it runs no .sif workloads). Resolution order: an explicit pin wins;
+# below, it runs no .sif workloads). Resolution order: an explicit pin wins;
 # else the AMI just baked in-account by Image Builder (build_compute_ami), read
 # straight from the resource so ONE apply builds AND uses it (no manual "read the
 # output, pin it, re-apply" step); else "" so the node group falls back to the
@@ -48,7 +47,7 @@ locals {
 # --- PCS node IAM -------------------------------------------------------
 # Compute + login instances register with the cluster and are managed over
 # SSM (no SSH). The role NAME must start with "AWSPCS" (or use path
-# /aws-pcs/) — PCS requires this prefix to recognize the instance profile.
+# /aws-pcs/), because PCS requires this prefix to recognize the instance profile.
 # AC-6: pcs:RegisterComputeNodeGroupInstance is the only inline grant; SSM +
 # CloudWatch come from AWS-managed policies.
 
@@ -184,8 +183,8 @@ resource "aws_security_group_rule" "pcs_egress_all" {
 # mount the shared filesystem the launch template configures below. The EFS SG
 # otherwise admits only the web tier (efs_ingress_web in security_groups.tf).
 # Gated on enable_pcs because the PCS SG only exists then, and kept here (not in
-# security_groups.tf) so tearing out PCS removes this with it — same pattern as
-# pcs_ingress_web_slurmrestd.
+# security_groups.tf) so tearing out PCS removes this with it (same pattern as
+# pcs_ingress_web_slurmrestd).
 
 resource "aws_security_group_rule" "efs_ingress_pcs" {
   count                    = var.enable_pcs ? 1 : 0
@@ -220,7 +219,7 @@ resource "aws_launch_template" "pcs" {
   # registers with the PCS API.
   #
   # amazon-efs-utils provides the `efs` mount type with `tls` (in-transit
-  # encryption) — matching the Django mount (transit_encryption = ENABLED in
+  # encryption), matching the Django mount (transit_encryption = ENABLED in
   # django.tf). Compute nodes mount the EFS ROOT at /ngencerf-app (PW-parity
   # layout): SIFs land at /ngencerf-app/singularity, cal data at
   # /ngencerf-app/data/ngen-cal-data. Django (Fargate) mounts the SAME EFS via
@@ -267,14 +266,14 @@ EOT
 }
 
 # --- PCS cluster (awscc) ------------------------------------------------
-# SMALL controller, Slurm 25.05 (minimum version that supports BOTH accounting
+# SMALL controller, Slurm 25.11 (25.05 was the minimum that supports BOTH accounting
 # and the Slurm REST API). accounting=STANDARD records job history (sacct) and
 # is a prerequisite for slurmrestd. slurm_rest=STANDARD turns on slurmrestd
-# (port 6820, JWT) — the Django submission door. Idle compute scales down after
+# (port 6820, JWT): the Django submission door. Idle compute scales down after
 # 5 minutes.
 #
 # COST: the SMALL controller bills hourly even at 0 compute, and accounting
-# adds a second hourly fee — NOT free. Destroy at end of day.
+# adds a second hourly fee, NOT free. Destroy at end of day.
 
 resource "awscc_pcs_cluster" "main" {
   count = var.enable_pcs ? 1 : 0
@@ -283,7 +282,7 @@ resource "awscc_pcs_cluster" "main" {
 
   scheduler = {
     type    = "SLURM"
-    version = "25.05"
+    version = "25.11"
   }
 
   networking = {
@@ -307,7 +306,7 @@ resource "awscc_pcs_cluster" "main" {
   # PCS reads this cluster's security group during CreateCluster and rejects an
   # SG with no outbound rules. The SG's egress and ingress are separate
   # aws_security_group_rule attachment resources, so without an explicit
-  # dependency Terraform creates the cluster in parallel with them — a race that
+  # dependency Terraform creates the cluster in parallel with them, a race that
   # intermittently fails with "At least one security group must have outbound
   # rules to allow outgoing traffic". Order the cluster after both rules so the
   # SG is fully configured before PCS validates it.
@@ -324,9 +323,9 @@ resource "awscc_pcs_cluster" "main" {
 # Jobs are single-node (the server emits --nodes=1 --ntasks=1 --cpus-per-task=N),
 # so a group's instance type just has to carry the largest cpus-per-task that
 # path requests (default <=6, heavy <=18). Both autoscale from min=0, so idle
-# cost is $0 — only the controller bills until a job lands. Instance type per
-# group is operator-set (pcs_compute_*_instance_type); personal-dev picks cheap
-# instances, prod intent is c5n.9xlarge / r8a.12xlarge.
+# cost is $0, only the controller bills until a job lands. Instance type per
+# group is operator-set (pcs_compute_*_instance_type); the sandbox/dev tier picks
+# cheap instances, prod intent is c5n.9xlarge / r8a.12xlarge.
 
 resource "awscc_pcs_compute_node_group" "compute_default" {
   count      = var.enable_pcs ? 1 : 0
@@ -387,7 +386,7 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
 # (`sbatch`/`squeue`/`sacct`/`sinfo`). It is NOT attached to the queue, so the
 # scheduler never places jobs on it, and it is NOT in the job-submission path:
 # Django submits straight to the Slurm REST API (slurmrestd), never through this
-# node. KEPT purely as a TESTING + ops on-ramp — a place to SSM in and inspect
+# node. KEPT purely as a TESTING + ops on-ramp: a place to SSM in and inspect
 # or drive Slurm directly (verify scheduling, debug job state, run a manual
 # job). Nothing in the application depends on it; safe to remove if a standing
 # ops box isn't wanted.
@@ -422,7 +421,7 @@ resource "awscc_pcs_compute_node_group" "login" {
 # --- Queues (awscc) -----------------------------------------------------
 # A PCS queue IS a Slurm partition. The server routes each job to a partition
 # BY NAME and rejects any name it didn't emit, so these names must be EXACTLY
-# "c5n-9xlarge" and "r8a-12xlarge" (hyphens, not dots) — they are the partition
+# "c5n-9xlarge" and "r8a-12xlarge" (hyphens, not dots). They are the partition
 # identifiers in the server's SLURM_NODE_TYPE_RULES, not instance types. Each
 # queue points at its backing compute node group (not login).
 #
@@ -468,7 +467,7 @@ resource "awscc_pcs_queue" "r8a_12xlarge" {
 # --- Slurm REST API wiring: Django (web tier) -> slurmrestd -------------
 # Lets the Django Fargate task submit jobs to the cluster over the Slurm REST
 # API (slurmrestd, port 6820). Part of the PCS feature, so gated on
-# var.enable_pcs and kept here — removing PCS removes this too.
+# var.enable_pcs and kept here (removing PCS removes this too).
 
 # slurmrestd:6820 ingress from the Django web SG. The web SG already has
 # all-egress, so this inbound rule is the only opening needed.

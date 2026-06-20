@@ -1,7 +1,7 @@
 # Application Load Balancer fronting the Django Fargate service. Internet-facing
 # by default; internal (on private subnets) when var.alb_internal = true.
 # HTTP-only on port 80; HTTPS + ACM via terraform-aws-acm-cross-account
-# lands later. Listener rule /api/* → Django target group; default action
+# lands later. Listener rule /api/* -> Django target group; default action
 # forwards to the Nuxt UI target group. idle_timeout = 240 covers the
 # CLI's ZIP download path. SG attached is aws_security_group.alb (declared
 # in security_groups.tf); deletion_protection = var.production keeps prod
