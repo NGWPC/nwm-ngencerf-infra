@@ -1,9 +1,9 @@
-# EC2 Image Builder — custom AMI for AWS PCS compute nodes.
+# EC2 Image Builder: custom AMI for AWS PCS compute nodes.
 #
 # Bakes the compute-node software stack into one AMI so jobs start fast (no
-# install-at-boot): the AWS PCS agent, Slurm 25.05 (matching the cluster), the
+# install-at-boot): the AWS PCS agent, Slurm 25.11 (matching the cluster), the
 # Apptainer container runtime, and amazon-efs-utils (the EFS TLS mount helper).
-# Apptainer container images (.sif) are NOT baked — they are staged on EFS and
+# Apptainer container images (.sif) are NOT baked. They are staged on EFS and
 # read at run time, so the AMI stays small and images update without a rebuild.
 #
 # Approach = AWS's documented production pattern: start from a clean Canonical
@@ -14,7 +14,7 @@
 # Everything here is gated on var.build_compute_ami (default false), separate
 # from var.enable_pcs: a build runs a ~20-30 min build instance, so it's an
 # explicit opt-in. The compute node group consumes the result via
-# var.pcs_compute_ami_id (see pcs.tf) — build once, read the compute_ami_id
+# var.pcs_compute_ami_id (see pcs.tf): build once, read the compute_ami_id
 # output, pin it. NGWPC envs leave both off and are untouched.
 
 locals {
@@ -84,7 +84,7 @@ resource "aws_iam_instance_profile" "imagebuilder" {
 
 # --- Build instance security group --------------------------------------
 # The build instance only needs egress (download installers + .deb packages,
-# git clone, reach SSM). No ingress — SSM connects outbound. SC-7.
+# git clone, reach SSM). No ingress, SSM connects outbound. SC-7.
 
 resource "aws_security_group" "imagebuilder" {
   count       = var.build_compute_ami ? 1 : 0
@@ -108,8 +108,8 @@ resource "aws_security_group_rule" "imagebuilder_egress_all" {
 # One component, build phase, ordered ExecuteBash steps. The PCS agent + Slurm
 # come from AWS's signed installer tarballs (verbatim from the PCS User Guide);
 # Apptainer from its official non-suid .deb; amazon-efs-utils is built from
-# source (no apt package on Ubuntu — it compiles a Rust efs-proxy, so we install
-# a current Rust toolchain via rustup first). Slurm is pinned to 25.05 to match
+# source (no apt package on Ubuntu, it compiles a Rust efs-proxy, so we install
+# a current Rust toolchain via rustup first). Slurm is pinned to 25.11 to match
 # the cluster's scheduler version (the agent activates the matching build at
 # boot). No reboot step: AWS's manual flow reboots after the OS upgrade, but a
 # baked AMI's instances boot fresh on the upgraded kernel and nothing here needs
@@ -123,11 +123,11 @@ resource "aws_imagebuilder_component" "pcs_compute" {
   count    = var.build_compute_ami ? 1 : 0
   name     = "${var.name_prefix}-pcs-compute"
   platform = "Linux"
-  version  = "1.0.3"
+  version  = "1.0.4"
 
   data = <<EOT
 name: ${var.name_prefix}-pcs-compute
-description: PCS agent, Slurm 25.05, Apptainer, amazon-efs-utils.
+description: PCS agent, Slurm 25.11, Apptainer, amazon-efs-utils.
 schemaVersion: 1.0
 phases:
   - name: build
@@ -160,11 +160,11 @@ phases:
           commands:
             - set -euxo pipefail
             - cd /tmp
-            - curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors ${local.pcs_installer_base}/aws-pcs-slurm/aws-pcs-slurm-25.05-installer-25.05.7-1.tar.gz -o aws-pcs-slurm.tar.gz
+            - curl -fsSL --retry 5 --retry-delay 5 --retry-all-errors ${local.pcs_installer_base}/aws-pcs-slurm/aws-pcs-slurm-25.11-installer-25.11.2-1.tar.gz -o aws-pcs-slurm.tar.gz
             - tar -xf aws-pcs-slurm.tar.gz
-            - cd aws-pcs-slurm-25.05-installer
+            - cd aws-pcs-slurm-25.11-installer
             - sudo ./installer.sh -y
-            - cat /opt/aws/pcs/scheduler/slurm-25.05/version || true
+            - cat /opt/aws/pcs/scheduler/slurm-25.11/version || true
       - name: InstallApptainer
         action: ExecuteBash
         onFailure: Abort
@@ -200,12 +200,12 @@ EOT
 # --- Image recipe -------------------------------------------------------
 # Clean Ubuntu 24.04 parent + our one component. 50 GiB gp3 root so the Slurm
 # compile and Rust toolchain have room; encrypted with the AWS-managed EBS key
-# (SC-28 — a customer-managed CMK is a hardening follow-up).
+# (SC-28: a customer-managed CMK is a hardening follow-up).
 
 resource "aws_imagebuilder_image_recipe" "pcs_compute" {
   count        = var.build_compute_ami ? 1 : 0
   name         = "${var.name_prefix}-pcs-compute"
-  version      = "1.0.3"
+  version      = "1.0.4"
   parent_image = nonsensitive(data.aws_ssm_parameter.ubuntu_2404[0].value)
 
   component {

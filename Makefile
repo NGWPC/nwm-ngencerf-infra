@@ -1,11 +1,11 @@
 .PHONY: help init plan apply destroy bootstrap load-static smoke fmt lint pre-commit-install _check_env
 
-ENV ?= personal-dev
+ENV ?= sandbox
 TERRAFORM_DIR := aws/envs/$(ENV)
 
 help:
-	@echo "Targets (pass ENV=<env>, default personal-dev):"
-	@echo "  Valid envs: personal-dev, sandbox, test/dev, test/dev2, test/perf,"
+	@echo "Targets (pass ENV=<env>, default sandbox):"
+	@echo "  Valid envs: sandbox, test/dev, test/dev2, test/perf,"
 	@echo "              test/integration, optimization/ea, optimization/uat,"
 	@echo "              optimization/uat2"
 	@echo ""
@@ -27,7 +27,7 @@ help:
 
 _check_env:
 	@if [ ! -d "$(TERRAFORM_DIR)" ]; then \
-		echo "ERROR: env '$(ENV)' not found. Valid: personal-dev, sandbox, test/{dev,dev2,perf,integration}, optimization/{ea,uat,uat2}"; \
+		echo "ERROR: env '$(ENV)' not found. Valid: sandbox, test/{dev,dev2,perf,integration}, optimization/{ea,uat,uat2}"; \
 		exit 1; \
 	fi
 

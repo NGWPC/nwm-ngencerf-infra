@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# bootstrap.sh — one-time-per-bring-up EFS staging (SIFs + ngen static data).
+# bootstrap.sh: one-time-per-bring-up EFS staging (SIFs + ngen static data).
 #
 # Seeds a freshly created (empty) EFS in two stages:
 #   - sif-sync (sif_sync.tf): one standalone ECS task per var.sif_workloads,
@@ -86,7 +86,7 @@ run_task() {
     echo "  logs: aws logs tail /aws/ecs/${PREFIX}/${logsuffix} --region ${REGION} --since 30m" >&2
     return 1
   fi
-  echo "  OK — ${label} (exitCode=0)."
+  echo "  OK: ${label} (exitCode=0)."
 }
 
 # --- static-data: load the ngen static-input tree onto EFS via the login node
@@ -167,7 +167,7 @@ EOS
       --query 'StandardErrorContent' --output text 2>/dev/null | tail -20 >&2 || true
     return 1
   fi
-  echo "  OK — static-data loaded on EFS /data/ngen-cal-data/ngen-static-files."
+  echo "  OK: static-data loaded on EFS /data/ngen-cal-data/ngen-static-files."
 }
 
 overall=0
@@ -196,7 +196,7 @@ if [ "${STAGE}" = "all" ] || [ "${STAGE}" = "static" ]; then
 fi
 
 if [ "${overall}" != "0" ]; then
-  echo "Bootstrap FAILED — one or more stages did not complete (see errors above)." >&2
+  echo "Bootstrap FAILED: one or more stages did not complete (see errors above)." >&2
   exit 1
 fi
 

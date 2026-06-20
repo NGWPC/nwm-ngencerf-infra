@@ -1,6 +1,6 @@
-# envs/optimization/ea/main.tf — NGWPC Optimization account, ea env.
-# VPC discovered via data sources from LZA-laid VPC. See
-# envs/personal-dev/main.tf for the dual-target-VPC pattern.
+# envs/optimization/ea/main.tf: NGWPC Optimization account, ea env.
+# This env discovers its LZA-laid VPC via data sources and passes the
+# vpc_id/subnet_ids into the module (which takes a caller-supplied VPC).
 #
 # Fill in the actual VPC/subnet tag patterns below before `terraform plan`.
 # Discover them via `aws ec2 describe-vpcs --profile <profile>` against
@@ -50,7 +50,7 @@ module "ngencerf" {
   rds_allocated_storage_gib = 200
   redis_node_type           = "cache.r7g.large"
 
-  # EDFS (NOAA Enterprise Data Services) — Optimization (OE) accounts use the OE endpoint.
+  # EDFS (NOAA Enterprise Data Services): Optimization (OE) accounts use the OE endpoint.
   enterprise_data_url = "https://edfs.oe.nextgenwaterprediction.com/"
   enterprise_data_env = "oe"
 }

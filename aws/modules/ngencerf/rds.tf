@@ -1,6 +1,6 @@
 # RDS Postgres for ngencerf application data (job queue, calibration metadata).
 # terraform-aws-modules/rds/aws ~> 6.0 wraps the ~6 separate resources RDS
-# needs (instance, subnet group, parameter group, etc.) — community standard.
+# needs (instance, subnet group, parameter group, etc.), the community standard.
 # SC-28: storage encrypted with env-wide CMK. CP-9: BackupPlan: Daily tag for
 # LZA backup vault. AC-6: SG-locked to web tier only (db_ingress_web).
 

@@ -13,13 +13,12 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 ## Environments
 
-Nine environments — one scratch env + eight NGWPC envs — each its own root module under `aws/envs/<...>/` with its own state file. All nine call the same shared module at `aws/modules/ngencerf/`. The module accepts `vpc_id` + `subnet_ids` as inputs; `personal-dev` creates its own VPC, and the NGWPC envs (`sandbox`, `test/*`, `optimization/*`) look up their LZA-laid VPC via `data` sources.
+Eight NGWPC environments, each its own root module under `aws/envs/<...>/` with its own state file. All eight call the same shared module at `aws/modules/ngencerf/`. The module is VPC-agnostic: it accepts `vpc_id` + `private_subnet_ids` + `public_subnet_ids` as caller-supplied inputs. No env creates a VPC; every env discovers its LZA-laid VPC via `data` sources (`data "aws_vpc"` / `data "aws_subnets"`) and passes the IDs into the module.
 
-Sizing is two-tier: `personal-dev`, `test/dev`, and `sandbox` are smallest (cheap, single-AZ); the other six are sized identically at prod-tier (`db.r7g.large` RDS, `cache.r7g.large` Redis).
+Sizing is two-tier: `sandbox` and `test/dev` are smallest (cheap, single-AZ); the other six are sized identically at prod-tier (`db.r7g.large` RDS, `cache.r7g.large` Redis).
 
 | Env                  | Account                | VPC source       | RDS class      |
 |----------------------|------------------------|------------------|----------------|
-| `personal-dev`       | personal sandbox       | self-created     | db.t4g.micro   |
 | `sandbox`            | NGWPC Sandbox          | LZA data lookup  | db.t4g.micro   |
 | `test/dev`           | NGWPC Test             | LZA data lookup  | db.t4g.micro   |
 | `test/dev2`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
@@ -29,11 +28,11 @@ Sizing is two-tier: `personal-dev`, `test/dev`, and `sandbox` are smallest (chea
 | `optimization/uat`   | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
 | `optimization/uat2`  | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
 
-**AWS PCS sizing.** Other than `personal-dev`, the sizing matches what's running in Parallel Works today. Controller is the Slurm head node; compute node groups are auto-scaling Slurm partitions. ngenCerf-server / Slurm code routes most workloads to the c5n partition and memory-heavy workloads to the r8a partition.
+**AWS PCS sizing.** Other than `sandbox` and `test/dev`, the sizing matches what's running in Parallel Works today. Controller is the Slurm head node; compute node groups are auto-scaling Slurm partitions. ngenCerf-server / Slurm code routes most workloads to the c5n partition and memory-heavy workloads to the r8a partition.
 
 | Env                  | Controller    | Compute (default)  | Compute (heavy)    | Max nodes per partition |
 |----------------------|---------------|--------------------|--------------------|-------------------------|
-| `personal-dev`       | c6a.large     | c6i.xlarge         | r6a.xlarge         | 4                       |
+| `sandbox`            | c6a.large     | c6i.xlarge         | r6a.xlarge         | 4                       |
 | `test/dev`           | c6a.large     | c6i.xlarge         | r6a.xlarge         | 4                       |
 | `test/dev2`          | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
 | `test/perf`          | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
@@ -45,39 +44,39 @@ Sizing is two-tier: `personal-dev`, `test/dev`, and `sandbox` are smallest (chea
 ## Prerequisites
 
 - AWS CLI v2 installed and authenticated to the target account (`aws sts get-caller-identity` works)
-- Terraform `>= 1.10` (`terraform version`) — required for native S3 state locking
+- Terraform `>= 1.10` (`terraform version`), required for native S3 state locking
 - Permissions in the target AWS account to create VPC, IAM, RDS, ECS, S3, KMS resources
 - Python `>= 3.10` and `pre-commit` installed if you'll be developing this repo (`pip install pre-commit`)
 - `tflint` and `checkov` installed for lint targets (`brew install tflint checkov` on macOS)
 
 ## First run (per-account, one-time)
 
-The Terraform state backend (S3 bucket + customer-managed KMS key) has to exist before any env can use it as a backend. The `aws/bootstrap/` module solves this. **Run it once in the personal-dev account only** — the NGWPC Test and Optimization accounts already have pre-existing infra state buckets (`ngwpc-infra-test` / `ngwpc-infra-oe`); those envs consume that shared infrastructure via different state keys rather than bootstrapping their own. How those buckets were provisioned (LZA vs manual) is unverified.
+The Terraform state backend (S3 bucket + customer-managed KMS key) has to exist before any env can use it as a backend. The `aws/bootstrap/` module solves this. **Run it once in any account that needs Terraform to create its own state backend.** The NGWPC Sandbox, Test, and Optimization accounts already have pre-existing infra state buckets (`ngwpc-infra-test` / `ngwpc-infra-oe`); those envs consume that shared infrastructure via different state keys rather than bootstrapping their own. How those buckets were provisioned (LZA vs manual) is unverified.
 
 State locking uses S3's native lock-file mechanism (`use_lockfile = true`); DynamoDB is **not** used. That pattern is deprecated as of Terraform 1.10.
 
-See `aws/bootstrap/README.md` for the exact sequence — a 6-step flow that takes ~5 minutes and you never run again.
+See `aws/bootstrap/README.md` for the exact sequence: a 6-step flow that takes ~5 minutes and you never run again.
 
 After bootstrap completes, fill in `aws/envs/<env>/backend.hcl` and `aws/envs/<env>/terraform.tfvars` for the env you're spinning up, then:
 
 ```bash
-make init  ENV=personal-dev   # terraform init using the env's backend.hcl
-make plan  ENV=personal-dev   # see the diff
-make apply ENV=personal-dev   # apply changes
-make smoke ENV=personal-dev   # end-to-end smoke test (after apply)
-make destroy ENV=personal-dev # tear it down (saves cost)
+make init  ENV=sandbox   # terraform init using the env's backend.hcl
+make plan  ENV=sandbox   # see the diff
+make apply ENV=sandbox   # apply changes
+make smoke ENV=sandbox   # end-to-end smoke test (after apply)
+make destroy ENV=sandbox # tear it down (saves cost)
 ```
 
 ## Day-to-day commands
 
-All targets accept `ENV=<env-path>` (default `personal-dev`). Valid env paths: `personal-dev`, `sandbox`, `test/dev`, `test/dev2`, `test/perf`, `test/integration`, `optimization/ea`, `optimization/uat`, `optimization/uat2`.
+All targets accept `ENV=<env-path>` (default `sandbox`). Valid env paths: `sandbox`, `test/dev`, `test/dev2`, `test/perf`, `test/integration`, `optimization/ea`, `optimization/uat`, `optimization/uat2`.
 
 ```bash
 make help                          # list all targets
 make plan ENV=test/dev             # plan NGWPC Test dev env
 make apply ENV=optimization/uat    # apply NGWPC Optimization uat env
-make destroy ENV=personal-dev      # destroy personal-dev (cost saver)
-make smoke ENV=personal-dev        # end-to-end smoke against personal-dev
+make destroy ENV=sandbox           # destroy sandbox (cost saver)
+make smoke ENV=sandbox             # end-to-end smoke against sandbox
 make fmt                           # terraform fmt -recursive
 make lint                          # tflint + checkov
 ```
@@ -86,7 +85,7 @@ make lint                          # tflint + checkov
 
 Each env pins the server and UI image tags in its `main.tf` (`ngencerf_server_image`,
 `ngencerf_ui_image`), so `terraform apply` is the source of truth for what runs. For fast
-dev iteration you can also roll a running ECS service to a new image **without** an apply —
+dev iteration you can also roll a running ECS service to a new image **without** an apply:
 register a new task-def revision and point the service at it:
 
 ```bash
@@ -105,16 +104,16 @@ NEWTD=$(aws ecs register-task-definition --cli-input-json file:///tmp/td.json --
 aws ecs update-service --cluster "$PREFIX-cluster" --service "$PREFIX-django" --task-definition "$NEWTD"
 ```
 
-These ad-hoc revisions are invisible to Terraform — the **next `terraform apply` reverts the
+These ad-hoc revisions are invisible to Terraform. The **next `terraform apply` reverts the
 service to the tag pinned in `main.tf`**. To make a build permanent, bump the image var in the
 env's `main.tf` and apply. (Whether a deploy pipeline should instead own the running image via
 a `lifecycle { ignore_changes = [task_definition] }` rule is an open decision.)
 
-## Cost (personal-dev, fully running 24×7)
+## Cost (sandbox, fully running 24x7)
 
-~$4.10/day (~$123/month) with the full Day-4 stack up. Biggest fixed shares: NAT Gateway (~$1.10/day), ALB (~$0.55/day), WAF (~$0.37/day for the web ACL + 6 rules), Fargate task (~$0.50/day for 0.5 vCPU / 2 GiB), RDS + Redis + EFS (~$0.40/day combined).
+~$4.10/day (~$123/month) with the smallest-tier stack fully up. Biggest fixed shares: NAT Gateway (~$1.10/day), ALB (~$0.55/day), WAF (~$0.37/day for the web ACL + 6 rules), Fargate task (~$0.50/day for 0.5 vCPU / 2 GiB), RDS + Redis + EFS (~$0.40/day combined).
 
-Tear down nights/weekends with `terraform plan -destroy && apply` from `envs/personal-dev/` to cut the running cost during off-hours. State bucket + KMS key for state survive a destroy.
+Tear down nights/weekends with `terraform plan -destroy && apply` from `envs/sandbox/` to cut the running cost during off-hours. State bucket + KMS key for state survive a destroy.
 
 ## Compliance posture
 
@@ -122,7 +121,7 @@ This repo is designed to satisfy the security controls applicable to the **FedRA
 
 > FedRAMP authorization is a process, not a code attribute. This repo is *designed to satisfy* the relevant NIST 800-53 controls; the authorization artifact is produced separately at the organizational level.
 
-### Design-choice → NIST 800-53 control mapping
+### Design-choice -> NIST 800-53 control mapping
 
 | Design choice | Controls |
 |---|---|
@@ -146,19 +145,19 @@ Inline `# SC-28: ...` / `# AC-6: ...` comments throughout the module map each re
 
 ### Per-env hardening toggles
 
-For prod-tier environments (everything outside `personal-dev` and `test/dev`), the env's `main.tf` flips these knobs:
+For prod-tier environments (everything outside `sandbox` and `test/dev`), the env's `main.tf` flips these knobs:
 
-- `production = true` — multi-AZ RDS, deletion protection on, `force_destroy = false` on durable resources (CP-2, SC-28)
-- `waf_rule_action = "block"` — WAF enforces matching rules in prod (vs. `count` for observation in dev) (SC-7, SI-4)
-- HTTPS listener on the ALB via `terraform-aws-acm-cross-account` (ACM cert + HTTP→HTTPS redirect) (SC-8, SC-13)
+- `production = true`: multi-AZ RDS, deletion protection on, `force_destroy = false` on durable resources (CP-2, SC-28)
+- `waf_rule_action = "block"`: WAF enforces matching rules in prod (vs. `count` for observation in dev) (SC-7, SI-4)
+- HTTPS listener on the ALB via `terraform-aws-acm-cross-account` (ACM cert + HTTP->HTTPS redirect) (SC-8, SC-13)
 
 ## Conventions
 
 This repo follows:
 
 - [HashiCorp Terraform Style Guide](https://developer.hashicorp.com/terraform/language/style)
-- [HashiCorp Module Composition](https://developer.hashicorp.com/terraform/language/modules/develop/composition) — flat module tree, one level of children
-- [AWS Prescriptive Guidance — Terraform AWS Provider Best Practices](https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/introduction.html)
+- [HashiCorp Module Composition](https://developer.hashicorp.com/terraform/language/modules/develop/composition): flat module tree, one level of children
+- [AWS Prescriptive Guidance: Terraform AWS Provider Best Practices](https://docs.aws.amazon.com/prescriptive-guidance/latest/terraform-aws-provider-best-practices/introduction.html)
 
 Concretely:
 
@@ -172,14 +171,14 @@ Concretely:
 - Static analysis via Checkov (AWS-prescribed); tfsec is deprecated and was merged into Trivy
 - Provider versions pinned with the pessimistic operator `~> 5.0`
 - Default tags on the AWS provider so every taggable resource is automatically tagged with `Project`, `ManagedBy`, `Repo`, `Owner`, `Environment`
-- Container image tags hardcoded in each env's `main.tf` (committed to git): reproducible — same commit + apply = same deploy; auditable via git log; tag bumps become PRs. Matches `nomad-runner`'s pattern of pinning AMI IDs in committed tfvars. Module defaults to `:latest` for development envs; prod-tier envs pin released tags. Evolves to a PR-bot pattern (source-repo CI opens infra-repo PRs) without restructuring once full CI/CD lands.
+- Container image tags hardcoded in each env's `main.tf` (committed to git): reproducible (same commit + apply = same deploy); auditable via git log; tag bumps become PRs. Matches `nomad-runner`'s pattern of pinning AMI IDs in committed tfvars. Module defaults to `:latest` for development envs; prod-tier envs pin released tags. Evolves to a PR-bot pattern (source-repo CI opens infra-repo PRs) without restructuring once full CI/CD lands.
 
 ## Repository structure
 
 ```text
 nwm-ngencerf-infra/
 ├── README.md                       this file
-├── Makefile                        dev shortcuts (ENV=personal-dev|sandbox|test/dev|test/dev2|test/perf|test/integration|optimization/ea|optimization/uat|optimization/uat2)
+├── Makefile                        dev shortcuts (ENV=sandbox|test/dev|test/dev2|test/perf|test/integration|optimization/ea|optimization/uat|optimization/uat2)
 ├── .gitignore                      Terraform-aware ignores; secrets never committed
 ├── .pre-commit-config.yaml         fmt/validate/tflint/checkov/gitleaks on commit
 ├── .tflint.hcl                     Terraform linter config
@@ -211,15 +210,14 @@ nwm-ngencerf-infra/
     │       ├── nuxt.tf             Nuxt UI ECS task definition + service
     │       └── logs.tf             CloudWatch log groups (ECS + WAF + Nuxt)
     ├── envs/
-    │   ├── personal-dev/           creates own VPC; iteration/sandbox env in a personal AWS account
+    │   ├── sandbox/                NGWPC Sandbox account (consumes LZA VPC; internal ALB; PCS)
     │   │   ├── terraform.tf        required_version + required_providers + backend "s3" {}
-    │   │   ├── providers.tf        AWS provider with default_tags (Environment = "personal-dev")
-    │   │   ├── main.tf             VPC creation + module "ngencerf" call with dev-sized values
+    │   │   ├── providers.tf        AWS provider with default_tags (Environment = "sandbox")
+    │   │   ├── main.tf             LZA VPC data lookup + module "ngencerf" call with dev-sized values
     │   │   ├── variables.tf        operator-supplied inputs only
     │   │   ├── outputs.tf          re-exports module outputs (alb_dns_name, vpc_id, subnets)
     │   │   ├── backend.hcl.example per-account backend template
     │   │   └── terraform.tfvars.example
-    │   ├── sandbox/                NGWPC Sandbox account (consumes LZA VPC; internal ALB; PCS)
     │   ├── test/                   NGWPC Test account (consumes LZA VPC)
     │   │   ├── dev/                dev-sized env
     │   │   ├── dev2/               prod-tier env

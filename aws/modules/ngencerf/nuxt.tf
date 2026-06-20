@@ -1,12 +1,12 @@
 # Nuxt UI Fargate task + service. Image ghcr.io/ngwpc/ngencerf-ui:latest is
-# built from Dockerfile.production-pw — Nuxt 3 SSR bundle served by
+# built from Dockerfile.production-pw: Nuxt 3 SSR bundle served by
 # `npm run start` on port 3000 (image already sets NUXT_HOST=0.0.0.0 +
 # NUXT_PORT=3000 and EXPOSE 3000). Stateless tier: no EFS, no DB, no secrets.
 # NGENCERF_BASE_URL is read at runtime via nuxt.config.ts runtimeConfig.public
-# (process.env.NGENCERF_BASE_URL → useRuntimeConfig().public.ngencerfBaseUrl)
+# (process.env.NGENCERF_BASE_URL -> useRuntimeConfig().public.ngencerfBaseUrl)
 # so the same image can target any backend by setting that env var.
 # SC-7: private subnet, reachable only through the ALB.
-# AC-6: minimal task role — UI has no AWS API surface, so nuxt_task is empty.
+# AC-6: minimal task role. UI has no AWS API surface, so nuxt_task is empty.
 
 resource "aws_ecs_task_definition" "nuxt" {
   family                   = "${var.name_prefix}-nuxt"
@@ -35,7 +35,7 @@ resource "aws_ecs_task_definition" "nuxt" {
         # Nuxt 3 auto-overrides runtimeConfig.public.ngencerfBaseUrl at runtime
         # only when the env var is named NUXT_PUBLIC_<KEY> (the un-prefixed
         # NGENCERF_BASE_URL in nuxt.config.ts is the BUILD-time default only).
-        # Value /api routes through ALB rule /api/* → Django; HTTPS lands later.
+        # Value /api routes through ALB rule /api/* -> Django; HTTPS lands later.
         { name = "NUXT_PUBLIC_NGENCERF_BASE_URL", value = "http://${module.alb.dns_name}/api" },
       ]
 

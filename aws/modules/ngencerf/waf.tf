@@ -1,9 +1,9 @@
-# WAFv2 web ACL fronting the ALB. Regional scope (NOT CloudFront — ALB is regional).
+# WAFv2 web ACL fronting the ALB. Regional scope (NOT CloudFront, ALB is regional).
 # Default action = allow; rules opt requests into count/block via var.waf_rule_action.
 # Managed rule groups: OWASP common, known-bad inputs, Amazon IP reputation, SQLi.
 # Rate-based per source IP: /api/auth/* 100/5min (anti-brute-force), /api/* 2000/5min.
-# Skipped intentionally: BotControl (flags CLI as bot), AnonymousIpList (false-positives
-# on legit researchers). See reference_ngencerf_cli.md for the locked rule set.
+# Skipped intentionally: BotControl (flags the CLI as a bot) and AnonymousIpList
+# (false-positives on researchers behind VPNs/cloud IPs).
 # SC-7: perimeter boundary protection. SI-3/SI-4: malicious code + monitoring.
 # SC-5: rate-based rules provide DoS protection.
 
@@ -246,7 +246,7 @@ resource "aws_wafv2_web_acl_association" "main" {
 }
 
 # Send all WAF request decisions to a dedicated CloudWatch log group. AWS
-# requires the log group name to start with "aws-waf-logs-" — naming
+# requires the log group name to start with "aws-waf-logs-", a naming
 # convention enforced by the WAF service when wiring logging.
 resource "aws_wafv2_web_acl_logging_configuration" "main" {
   resource_arn            = aws_wafv2_web_acl.main.arn

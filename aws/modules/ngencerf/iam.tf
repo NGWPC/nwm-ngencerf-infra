@@ -109,13 +109,13 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
 # --- Django task: scoped S3 access on existing NGWPC buckets ----------
 # AC-6: scoped to specific bucket ARNs, no s3:* wildcards.
 # Buckets ngwpc-ngencerf-zips and ngwpc-ngencerf-archive live in NGWPC's
-# Data account — owned by NGWPC infra, not by this stack. The
+# Data account, owned by NGWPC infra, not by this stack. The
 # cross-account access pattern (bucket policy vs role assumption) is set
 # on the bucket side; this policy grants the IAM half on the consumer side.
 #
 # The buckets are encrypted by a CMK in the Data account. Cross-account
 # kms:Decrypt + kms:GenerateDataKey must target that account's key ARN,
-# not aws_kms_key.main here — wire a `kms` statement to the Data-account
+# not aws_kms_key.main here. Wire a `kms` statement to the Data-account
 # CMK ARN at handoff.
 
 data "aws_iam_policy_document" "django_s3" {
@@ -142,7 +142,7 @@ data "aws_iam_policy_document" "django_s3" {
 
   # Read-only on ngwpc-forcing (Data account). The data-assimilation engine
   # reads SNODAS / SMAP / SNOTEL observation CSVs from s3://ngwpc-forcing/
-  # (snodas_csv, smap_csv, snotel_csv) at validation time. Read-only — the
+  # (snodas_csv, smap_csv, snotel_csv) at validation time. Read-only: the
   # engine never writes here. Same consumer-side IAM half as above; the
   # bucket-side grant is set on the Data account.
   statement {
@@ -213,7 +213,7 @@ resource "aws_iam_role_policy" "django_exec" {
 }
 
 # --- Nuxt task role ---------------------------------------------------
-# UI container is pure HTTP — renders pages, proxies API calls to Django
+# UI container is pure HTTP: renders pages, proxies API calls to Django
 # via the ALB. No AWS SDK usage, no S3, no Secrets Manager, no DB. Empty
 # role for correctness (ECS requires a task role on every task def).
 # AC-6: minimal surface; future AWS integrations would scope here.

@@ -68,9 +68,9 @@ resource "aws_kms_alias" "main" {
   target_key_id = aws_kms_key.main.key_id
 }
 
-# Preserve the underlying KMS key across the per-domain → per-env collapse.
+# Preserve the underlying KMS key across the per-domain -> per-env collapse.
 # The alias is replaced (KMS aliases are immutable on rename); the key
-# material stays put — avoids a 7-day pending-deletion window.
+# material stays put, so it avoids a 7-day pending-deletion window.
 moved {
   from = aws_kms_key.secrets
   to   = aws_kms_key.main
