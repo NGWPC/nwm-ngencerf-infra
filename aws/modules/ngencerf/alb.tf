@@ -61,12 +61,17 @@ module "alb" {
       target_type       = "ip"
       create_attachment = false
 
+      # Django liveness probe. Path is /api/health_check/ (the route is
+      # mounted under the /api prefix). matcher = "200" requires a true 200,
+      # so a DisallowedHost 400 no longer passes as healthy. The Fargate task
+      # adds its own private IP to ALLOWED_HOSTS at startup, so this probe
+      # clears Django host validation.
       health_check = {
         enabled             = true
-        path                = "/"
+        path                = "/api/health_check/"
         port                = "traffic-port"
         protocol            = "HTTP"
-        matcher             = "200-499"
+        matcher             = "200"
         interval            = 30
         timeout             = 5
         healthy_threshold   = 2
