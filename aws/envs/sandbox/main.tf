@@ -81,8 +81,14 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "c6i.8xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260618225541Z-mpena-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260623202108Z-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
+
+  # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
+  # uses its own unique prefix; seed a .keep object in each prefix so it exists
+  # before the first archive or zip is written.
+  ngencerf_archive_s3_path = "s3://ngwpc-ngencerf-archive/sandbox/"
+  ngencerf_zips_s3_path    = "s3://ngwpc-ngencerf-zips/sandbox/"
 
   # EDFS (NOAA Enterprise Data Services): Sandbox uses the Test data services.
   # Required by save_gage_tab (unset -> ValueError "Invalid environment: 'None'").

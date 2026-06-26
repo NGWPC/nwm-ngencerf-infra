@@ -51,6 +51,16 @@ resource "aws_ecs_task_definition" "django" {
         { name = "CERF_SERVER_DATABASE_HOST", value = module.rds.db_instance_address },
         { name = "REDIS_URL", value = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379/1" },
 
+        # ngenCerf archive + zip storage in S3 (shared buckets in the Data
+        # account). The server writes archived run directories under
+        # NGENCERF_ARCHIVE_S3_PATH and downloadable run zips under
+        # NGENCERF_ZIPS_S3_PATH (cloud_util.py reads both via the Django task
+        # role). Each env sets its own prefix (env main.tf). S3 has no real
+        # directories: a prefix exists only once an object is under it, so seed
+        # a .keep object in each prefix before the first archive or zip write.
+        { name = "NGENCERF_ARCHIVE_S3_PATH", value = var.ngencerf_archive_s3_path },
+        { name = "NGENCERF_ZIPS_S3_PATH", value = var.ngencerf_zips_s3_path },
+
         # EDFS (NOAA Enterprise Data Services): at gage-create time (save_gage_tab)
         # the server fetches hydrofabric geopackages, observational streamflow, and
         # module-parameter metadata from here. settings.py reads both with os.getenv
