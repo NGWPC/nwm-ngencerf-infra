@@ -44,6 +44,12 @@ variable "name_prefix" {
   description = "Prefix for resource names. Callers should include environment suffix (e.g., \"ngencerf-sandbox\", \"ngencerf-test-dev\") so resource names don't collide when multiple envs share an account."
 }
 
+variable "ngencerf_archive_s3_path" {
+  type        = string
+  description = "S3 URI prefix (with trailing slash) where the server writes archived run directories, e.g. s3://ngwpc-ngencerf-archive/<env>/ (NGENCERF_ARCHIVE_S3_PATH, read by cloud_util.py via the Django task role). Each env uses its own unique prefix under the shared Data-account bucket. S3 has no real directories, so seed a .keep object in the prefix before the first archive. Empty leaves it unset."
+  default     = ""
+}
+
 variable "ngencerf_server_image" {
   type        = string
   description = "Full container image URL (including tag) for the Django ECS service. Defaults to public GHCR :latest, which is built from Dockerfile.production-pw and bakes in the RDS CA bundle; runtime config is env-var driven (settings.py reads os.getenv, no local_settings.py). Override per env to pin a specific tag or swap registries (e.g., ECR mirror post-handoff)."
@@ -54,6 +60,12 @@ variable "ngencerf_ui_image" {
   type        = string
   description = "Full container image URL (including tag) for the Nuxt UI ECS service. Defaults to public GHCR :latest, built from Dockerfile.production-pw in ngencerf-ui. Stateless Nuxt 3 SSR on port 3000; reads NGENCERF_BASE_URL via runtimeConfig at runtime. Override to pin a release tag for prod-tier envs."
   default     = "ghcr.io/ngwpc/ngencerf-ui:latest"
+}
+
+variable "ngencerf_zips_s3_path" {
+  type        = string
+  description = "S3 URI prefix (with trailing slash) where the server writes downloadable run zip files, e.g. s3://ngwpc-ngencerf-zips/<env>/ (NGENCERF_ZIPS_S3_PATH, read by cloud_util.py via the Django task role). Each env uses its own unique prefix under the shared Data-account bucket. Seed a .keep object in the prefix before first use. Empty leaves it unset."
+  default     = ""
 }
 
 variable "pcs_compute_ami_id" {
