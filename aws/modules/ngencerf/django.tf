@@ -40,6 +40,8 @@ resource "aws_ecs_task_definition" "django" {
 
       environment = concat([
         { name = "DJANGO_DEBUG", value = "False" },
+        { name = "CERF_ASGI", value = "1" },
+        { name = "CERF_PRODUCTION", value = "1" },
         { name = "ALLOWED_HOSTS", value = join(",", concat([module.alb.dns_name], var.allowed_hosts)) },
         { name = "JOB_EXECUTION_MODE", value = var.enable_pcs ? "SLURM" : "DOCKER" },
         { name = "GUNICORN_WORKERS", value = "2" },
