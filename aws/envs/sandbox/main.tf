@@ -81,7 +81,7 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "c6i.8xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260623202108Z-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260626191042Z-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
 
   # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
