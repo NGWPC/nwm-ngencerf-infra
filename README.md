@@ -4,12 +4,13 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 ## Architecture
 
-- VPC with public + private subnets across 2 Availability Zones
-- Public subnets: ALB and NAT Gateway only
-- Private subnets: ECS Fargate tasks (Django API, Nuxt UI), RDS Postgres, ElastiCache Redis, EFS, AWS PCS Controller + Compute Node Group
-- S3 buckets for forcing data and archives, accessed via VPC Gateway Endpoint
-- Public DNS via Route 53, TLS via ACM, HTTPS termination at ALB
+- Consumes an existing VPC via data sources (LZA-provisioned for the NGWPC envs); it creates no VPC, subnet, IGW, or NAT
+- Private subnets host everything: ECS Fargate tasks (Django API, Nuxt UI), RDS Postgres, ElastiCache Redis, EFS, AWS PCS controller + compute node groups
+- ALB is internal for the NGWPC envs (private subnets only; reach it over the VPC / Transit Gateway path); the module still supports a public ALB (`alb_internal = false`) when the VPC supplies public subnets
+- Outbound egress rides the VPC's existing path (Transit Gateway to the LZA centralized egress for the NGWPC envs); no IGW or NAT is created
+- S3 buckets for forcing data and archives, reached via a VPC S3 Gateway Endpoint (LZA-provided in the NGWPC VPCs)
 - IAM least-privilege role per service
+- HTTPS at the ALB (public Route 53 record + ACM cert) is the planned edge; the NGWPC envs currently serve HTTP-only over the internal ALB
 
 ## Environments
 
@@ -113,7 +114,7 @@ a `lifecycle { ignore_changes = [task_definition] }` rule is an open decision.)
 
 ## Cost (sandbox, fully running 24x7)
 
-With the uniform prod-tier sizing, the always-on cost is far higher than the old dev tier (~$4/day) and is dominated by the MEDIUM PCS controller (billed hourly even at 0 compute, plus the accounting fee), the prod data tier (db.r7g.large RDS + cache.r7g.large Redis), and the 8 vCPU / 16 GiB Django Fargate task, on top of the fixed NAT Gateway (~$1.10/day), ALB (~$0.55/day), and WAFv2 (~$0.37/day). PCS *compute* (c5n.9xlarge / r8a.12xlarge) autoscales from 0, so it bills only while a job runs. Tear the stack down nights/weekends to avoid the prod-tier 24x7 cost.
+With the uniform prod-tier sizing, the always-on cost is far higher than the old dev tier (~$4/day) and is dominated by the MEDIUM PCS controller (billed hourly even at 0 compute, plus the accounting fee), the prod data tier (db.r7g.large RDS + cache.r7g.large Redis), and the 8 vCPU / 16 GiB Django Fargate task, on top of the internal ALB (~$0.55/day) and WAFv2 (~$0.37/day) (egress uses the LZA centralized NAT in the Network account, so this stack provisions no NAT Gateway of its own). PCS *compute* (c5n.9xlarge / r8a.12xlarge) autoscales from 0, so it bills only while a job runs. Tear the stack down nights/weekends to avoid the prod-tier 24x7 cost.
 
 Tear down nights/weekends with `terraform plan -destroy && apply` from `envs/sandbox/` to cut the running cost during off-hours. State bucket + KMS key for state survive a destroy.
 
