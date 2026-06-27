@@ -266,19 +266,19 @@ EOT
 }
 
 # --- PCS cluster (awscc) ------------------------------------------------
-# SMALL controller, Slurm 25.11 (25.05 was the minimum that supports BOTH accounting
+# MEDIUM controller (handles up to 512 nodes / 8192 jobs; the 50-node-per-partition ceiling exceeds SMALL's 32-node cap), Slurm 25.11 (25.05 was the minimum that supports BOTH accounting
 # and the Slurm REST API). accounting=STANDARD records job history (sacct) and
 # is a prerequisite for slurmrestd. slurm_rest=STANDARD turns on slurmrestd
 # (port 6820, JWT): the Django submission door. Idle compute scales down after
 # 5 minutes.
 #
-# COST: the SMALL controller bills hourly even at 0 compute, and accounting
+# COST: the MEDIUM controller bills hourly even at 0 compute, and accounting
 # adds a second hourly fee, NOT free. Destroy at end of day.
 
 resource "awscc_pcs_cluster" "main" {
   count = var.enable_pcs ? 1 : 0
   name  = "${var.name_prefix}-pcs"
-  size  = "SMALL"
+  size  = var.pcs_controller_size
 
   scheduler = {
     type    = "SLURM"
@@ -324,8 +324,8 @@ resource "awscc_pcs_cluster" "main" {
 # so a group's instance type just has to carry the largest cpus-per-task that
 # path requests (default <=6, heavy <=18). Both autoscale from min=0, so idle
 # cost is $0, only the controller bills until a job lands. Instance type per
-# group is operator-set (pcs_compute_*_instance_type); the sandbox/dev tier picks
-# cheap instances, prod intent is c5n.9xlarge / r8a.12xlarge.
+# group is operator-set (pcs_compute_*_instance_type); uniform prod sizing across
+# all envs is c5n.9xlarge / r8a.12xlarge, max 50 nodes/partition.
 
 resource "awscc_pcs_compute_node_group" "compute_default" {
   count      = var.enable_pcs ? 1 : 0
@@ -346,7 +346,7 @@ resource "awscc_pcs_compute_node_group" "compute_default" {
 
   scaling_configuration = {
     min_instance_count = 0
-    max_instance_count = 4
+    max_instance_count = var.pcs_max_nodes_per_partition
   }
 
   subnet_ids = var.private_subnet_ids
@@ -373,7 +373,7 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
 
   scaling_configuration = {
     min_instance_count = 0
-    max_instance_count = 4
+    max_instance_count = var.pcs_max_nodes_per_partition
   }
 
   subnet_ids = var.private_subnet_ids

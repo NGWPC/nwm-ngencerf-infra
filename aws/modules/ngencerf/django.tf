@@ -19,8 +19,8 @@ resource "aws_ecs_task_definition" "django" {
   family                   = "${var.name_prefix}-django"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "4096"
-  memory                   = "16384"
+  cpu                      = var.django_cpu
+  memory                   = var.django_memory
 
   execution_role_arn = aws_iam_role.ecs_task_execution.arn
   task_role_arn      = aws_iam_role.django_task.arn

@@ -76,12 +76,12 @@ module "ngencerf" {
   pcs_compute_ami_id = ""
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
-  # The small-tier default instance picks; both autoscale from 0 (no idle cost).
-  pcs_compute_default_instance_type = "c6i.2xlarge"
-  pcs_compute_heavy_instance_type   = "c6i.8xlarge"
+  # Uniform prod sizing; both autoscale from 0 (no idle cost).
+  pcs_compute_default_instance_type = "c5n.9xlarge"
+  pcs_compute_heavy_instance_type   = "r8a.12xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260626191042Z-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260626231110Z-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
 
   # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
@@ -104,7 +104,7 @@ module "ngencerf" {
     "nwm-verf"     = "20260616203352Z-mpena-aws-migration"
   }
 
-  rds_instance_class        = "db.t4g.micro"
-  rds_allocated_storage_gib = 20
-  redis_node_type           = "cache.t4g.micro"
+  rds_instance_class        = "db.r7g.large"
+  rds_allocated_storage_gib = 200
+  redis_node_type           = "cache.r7g.large"
 }
