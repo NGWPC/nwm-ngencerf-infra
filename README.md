@@ -15,12 +15,12 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 Eight NGWPC environments, each its own root module under `aws/envs/<...>/` with its own state file. All eight call the same shared module at `aws/modules/ngencerf/`. The module is VPC-agnostic: it accepts `vpc_id` + `private_subnet_ids` + `public_subnet_ids` as caller-supplied inputs. No env creates a VPC; every env discovers its LZA-laid VPC via `data` sources (`data "aws_vpc"` / `data "aws_subnets"`) and passes the IDs into the module.
 
-Sizing is two-tier: `sandbox` and `test/dev` are smallest (cheap, single-AZ); the other six are sized identically at prod-tier (`db.r7g.large` RDS, `cache.r7g.large` Redis).
+Sizing is uniform across all eight envs: every env runs the same prod-tier resources (`db.r7g.large` RDS + 200 GiB, `cache.r7g.large` Redis, c5n.9xlarge / r8a.12xlarge PCS compute, 8 vCPU / 16 GiB Django, 2 vCPU / 4 GiB Nuxt) so sandbox and the test envs regression-test against prod-shaped infrastructure. Only the per-env `production` flag varies (it gates multi-AZ RDS, Redis failover, and deletion protection); `sandbox` keeps it off so it stays quick to tear down.
 
 | Env                  | Account                | VPC source       | RDS class      |
 |----------------------|------------------------|------------------|----------------|
-| `sandbox`            | NGWPC Sandbox          | LZA data lookup  | db.t4g.micro   |
-| `test/dev`           | NGWPC Test             | LZA data lookup  | db.t4g.micro   |
+| `sandbox`            | NGWPC Sandbox          | LZA data lookup  | db.r7g.large   |
+| `test/dev`           | NGWPC Test             | LZA data lookup  | db.r7g.large   |
 | `test/dev2`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
 | `test/perf`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
 | `test/integration`   | NGWPC Test             | LZA data lookup  | db.r7g.large   |
@@ -28,18 +28,20 @@ Sizing is two-tier: `sandbox` and `test/dev` are smallest (cheap, single-AZ); th
 | `optimization/uat`   | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
 | `optimization/uat2`  | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
 
-**AWS PCS sizing.** Other than `sandbox` and `test/dev`, the sizing matches what's running in Parallel Works today. Controller is the Slurm head node; compute node groups are auto-scaling Slurm partitions. ngenCerf-server / Slurm code routes most workloads to the c5n partition and memory-heavy workloads to the r8a partition.
+**Resource sizing (uniform across all envs).** Every env runs the same prod-tier sizes; only the `production` flag (multi-AZ RDS, Redis failover, deletion protection) differs per env. PCS compute autoscales from 0, so it bills only while a job runs. Every size below is a module variable with the prod default shown; any env can override it per-resource in its `main.tf` (e.g. `nuxt_cpu`, `django_memory`, `rds_instance_class`, `pcs_controller_size`, `pcs_max_nodes_per_partition`).
 
-| Env                  | Controller    | Compute (default)  | Compute (heavy)    | Max nodes per partition |
-|----------------------|---------------|--------------------|--------------------|-------------------------|
-| `sandbox`            | c6a.large     | c6i.xlarge         | r6a.xlarge         | 4                       |
-| `test/dev`           | c6a.large     | c6i.xlarge         | r6a.xlarge         | 4                       |
-| `test/dev2`          | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
-| `test/perf`          | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
-| `test/integration`   | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
-| `optimization/ea`    | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
-| `optimization/uat`   | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
-| `optimization/uat2`  | r6a.12xlarge  | c5n.9xlarge        | r8a.12xlarge       | 50                      |
+| Tier                  | Resource                   | Size                                                  |
+|-----------------------|----------------------------|-------------------------------------------------------|
+| Web (Fargate)         | Django (`ngencerf-server`) | 8 vCPU / 16 GiB, desired_count 1                      |
+| Web (Fargate)         | Nuxt UI (`ngencerf-ui`)    | 2 vCPU / 4 GiB, desired_count 1                  |
+| Data                  | RDS Postgres               | db.r7g.large, 200 GiB gp3 (multi-AZ when `production`) |
+| Data                  | ElastiCache Redis          | cache.r7g.large (2-node failover when `production`)    |
+| PCS controller        | Slurm head node            | MEDIUM (sized by node/job count, not an EC2 type)     |
+| PCS compute (default) | `c5n-9xlarge` partition    | c5n.9xlarge, autoscale 0-50                           |
+| PCS compute (heavy)   | `r8a-12xlarge` partition   | r8a.12xlarge, autoscale 0-50                          |
+| PCS login             | ops on-ramp                | c6i.large, fixed 1                                    |
+
+The PCS controller is sized SMALL/MEDIUM/LARGE by the nodes + jobs it tracks, not by EC2 type: MEDIUM supports up to 512 nodes / 8192 jobs, covering the 50-node-per-partition ceiling (SMALL caps at 32). ngenCerf-server routes each job to the `c5n-9xlarge` partition (<=500 catchments) or `r8a-12xlarge` (>500) by catchment count.
 
 ## Prerequisites
 
@@ -111,7 +113,7 @@ a `lifecycle { ignore_changes = [task_definition] }` rule is an open decision.)
 
 ## Cost (sandbox, fully running 24x7)
 
-~$4.10/day (~$123/month) with the smallest-tier stack fully up. Biggest fixed shares: NAT Gateway (~$1.10/day), ALB (~$0.55/day), WAF (~$0.37/day for the web ACL + 6 rules), Fargate task (~$0.50/day for 0.5 vCPU / 2 GiB), RDS + Redis + EFS (~$0.40/day combined).
+With the uniform prod-tier sizing, the always-on cost is far higher than the old dev tier (~$4/day) and is dominated by the MEDIUM PCS controller (billed hourly even at 0 compute, plus the accounting fee), the prod data tier (db.r7g.large RDS + cache.r7g.large Redis), and the 8 vCPU / 16 GiB Django Fargate task, on top of the fixed NAT Gateway (~$1.10/day), ALB (~$0.55/day), and WAFv2 (~$0.37/day). PCS *compute* (c5n.9xlarge / r8a.12xlarge) autoscales from 0, so it bills only while a job runs. Tear the stack down nights/weekends to avoid the prod-tier 24x7 cost.
 
 Tear down nights/weekends with `terraform plan -destroy && apply` from `envs/sandbox/` to cut the running cost during off-hours. State bucket + KMS key for state survive a destroy.
 
@@ -213,13 +215,13 @@ nwm-ngencerf-infra/
     │   ├── sandbox/                NGWPC Sandbox account (consumes LZA VPC; internal ALB; PCS)
     │   │   ├── terraform.tf        required_version + required_providers + backend "s3" {}
     │   │   ├── providers.tf        AWS provider with default_tags (Environment = "sandbox")
-    │   │   ├── main.tf             LZA VPC data lookup + module "ngencerf" call with dev-sized values
+    │   │   ├── main.tf             LZA VPC data lookup + module "ngencerf" call (uniform prod sizing)
     │   │   ├── variables.tf        operator-supplied inputs only
     │   │   ├── outputs.tf          re-exports module outputs (alb_dns_name, vpc_id, subnets)
     │   │   ├── backend.hcl.example per-account backend template
     │   │   └── terraform.tfvars.example
     │   ├── test/                   NGWPC Test account (consumes LZA VPC)
-    │   │   ├── dev/                dev-sized env
+    │   │   ├── dev/                dev env
     │   │   ├── dev2/               prod-tier env
     │   │   ├── perf/               prod-tier env
     │   │   └── integration/        prod-tier env

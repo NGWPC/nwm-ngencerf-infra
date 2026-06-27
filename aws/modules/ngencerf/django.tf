@@ -19,8 +19,8 @@ resource "aws_ecs_task_definition" "django" {
   family                   = "${var.name_prefix}-django"
   requires_compatibilities = ["FARGATE"]
   network_mode             = "awsvpc"
-  cpu                      = "512"
-  memory                   = "2048"
+  cpu                      = var.django_cpu
+  memory                   = var.django_memory
 
   execution_role_arn = aws_iam_role.ecs_task_execution.arn
   task_role_arn      = aws_iam_role.django_task.arn
@@ -44,7 +44,10 @@ resource "aws_ecs_task_definition" "django" {
         { name = "CERF_PRODUCTION", value = "1" },
         { name = "ALLOWED_HOSTS", value = join(",", concat([module.alb.dns_name], var.allowed_hosts)) },
         { name = "JOB_EXECUTION_MODE", value = var.enable_pcs ? "SLURM" : "DOCKER" },
-        { name = "GUNICORN_WORKERS", value = "2" },
+        { name = "GUNICORN_WORKERS", value = "24" },
+        { name = "GUNICORN_MAX_REQUESTS", value = "300" },
+        { name = "GUNICORN_MAX_REQUESTS_JITTER", value = "100" },
+        { name = "GUNICORN_GRACEFUL_TIMEOUT", value = "120" },
         { name = "PROD_FLAG", value = "1" },
         { name = "CERF_SERVER_DATABASE_NAME", value = "ngencerf" },
         { name = "CERF_SERVER_DATABASE_USER", value = "ngencerf" },

@@ -46,9 +46,9 @@ module "ngencerf" {
 
   production = false
 
-  rds_instance_class        = "db.t4g.micro"
-  rds_allocated_storage_gib = 20
-  redis_node_type           = "cache.t4g.micro"
+  rds_instance_class        = "db.r7g.large"
+  rds_allocated_storage_gib = 200
+  redis_node_type           = "cache.r7g.large"
 
   # EDFS (NOAA Enterprise Data Services): Test accounts use the Test endpoint.
   enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/"
