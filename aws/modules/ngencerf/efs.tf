@@ -42,7 +42,7 @@ resource "aws_efs_mount_target" "main" {
 # not through these access points.
 #   - cal_data:    /data/ngen-cal-data  -> Django /ngencerf/data       (CONTAINER_DATA_ROOT)
 #   - singularity: /singularity         -> Django /ngencerf/containers  (SINGULARITY_DIR)
-#   - init_flags:  /data/.ngencerf-init -> Django /ngencerf/ngencerf-server/.init (runCerf flag dir; init_gages markers persist)
+#   - init_flags:  /data/ngencerf-init  -> Django /ngencerf/ngencerf-server/.init (runCerf flag dir; init_gages markers persist)
 # AC-6: each task mount is scoped to its own subtree.
 
 resource "aws_efs_access_point" "cal_data" {
@@ -84,13 +84,14 @@ resource "aws_efs_access_point" "singularity" {
 # the BAKED /ngencerf/ngencerf-server/.init path (django.tf), not redirected via a
 # RUN_CERF_FLAG_DIRECTORY task-def env var: the image re-sources cerfserver.env at
 # startup, which would clobber any env override, so a mount is the only way to
-# point the flag dir at persistent storage. /data/.ngencerf-init is a sibling of
-# ngen-cal-data, mirroring the Parallel Works host layout.
+# point the flag dir at persistent storage. The EFS subtree is /data/ngencerf-init,
+# a sibling of ngen-cal-data; EFS access point paths reject a leading-dot segment
+# (CreateAccessPoint regex), so this is the un-dotted form of PW's .ngencerf-init dir.
 resource "aws_efs_access_point" "init_flags" {
   file_system_id = aws_efs_file_system.main.id
 
   root_directory {
-    path = "/data/.ngencerf-init"
+    path = "/data/ngencerf-init"
     creation_info {
       owner_uid   = 0
       owner_gid   = 0
