@@ -16,6 +16,12 @@ variable "build_compute_ami" {
   default     = false
 }
 
+variable "db_ingress_cidrs" {
+  type        = list(string)
+  description = "Extra CIDR blocks allowed to reach RDS Postgres (port 5432) on top of the application web tier. For direct developer/operator database access (e.g. the team's Amazon WorkSpaces) in non-prod envs. Empty by default so prod-tier envs expose the database only to the app."
+  default     = []
+}
+
 variable "django_cpu" {
   type        = string
   description = "Fargate task-level CPU units for the Django service. Must form a valid Fargate CPU/memory pair with django_memory (e.g. 8192 CPU allows 16384-61440 MiB in 4096 steps). Uniform prod default; override per env."

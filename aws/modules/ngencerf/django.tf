@@ -207,7 +207,7 @@ resource "aws_ecs_service" "django" {
   }
 
   health_check_grace_period_seconds  = 600
-  deployment_minimum_healthy_percent = 0
+  deployment_minimum_healthy_percent = 100
   deployment_maximum_percent         = 200
 
   depends_on = [aws_efs_mount_target.main]

@@ -86,6 +86,19 @@ resource "aws_security_group_rule" "db_ingress_web" {
   description              = "Postgres from web"
 }
 
+# Optional extra CIDRs (var.db_ingress_cidrs, empty by default) allowed to
+# reach Postgres directly, e.g. developer/operator access from team WorkSpaces.
+resource "aws_security_group_rule" "db_ingress_extra" {
+  for_each          = toset(var.db_ingress_cidrs)
+  type              = "ingress"
+  from_port         = 5432
+  to_port           = 5432
+  protocol          = "tcp"
+  cidr_blocks       = [each.value]
+  security_group_id = aws_security_group.db.id
+  description       = "Postgres from ${each.value}"
+}
+
 # --- ElastiCache Redis -------------------------------------------------
 
 resource "aws_security_group" "redis" {

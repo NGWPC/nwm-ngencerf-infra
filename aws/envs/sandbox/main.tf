@@ -64,6 +64,11 @@ module "ngencerf" {
 
   production = false
 
+  # Team Amazon WorkSpaces (Test account, both AZ subnets = 10.6.2.0/24)
+  # reach RDS Postgres directly for testing. Module default is empty, so
+  # prod-tier envs keep the DB reachable only from the app.
+  db_ingress_cidrs = ["10.6.2.0/24"]
+
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami
   # runs the Image Builder pipeline (~20-30 min on the FIRST apply) and the compute
   # node groups read that freshly baked AMI directly, so ONE apply builds and uses it,
