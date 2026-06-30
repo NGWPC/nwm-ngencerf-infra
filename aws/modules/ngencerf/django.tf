@@ -120,6 +120,13 @@ resource "aws_ecs_task_definition" "django" {
           sourceVolume  = "containers"
           containerPath = "/ngencerf/containers"
           readOnly      = false
+        },
+        {
+          # runCerf flag dir, EFS-backed so the init_gages markers persist across
+          # restarts (see efs.tf init_flags; the env var is baked + not overridable).
+          sourceVolume  = "init_flags"
+          containerPath = "/ngencerf/ngencerf-server/.init"
+          readOnly      = false
         }
       ]
 
@@ -134,9 +141,9 @@ resource "aws_ecs_task_definition" "django" {
     }
   ])
 
-  # Two EFS volumes via access points (efs.tf). The access point's root_directory
-  # makes Django see an EFS subtree as /ngencerf/data + /ngencerf/containers
-  # (PW-parity layout). transit_encryption is required with an access point;
+  # Three EFS volumes via access points (efs.tf). The access point's root_directory
+  # makes Django see an EFS subtree as /ngencerf/data + /ngencerf/containers + the
+  # runCerf flag dir (PW-parity layout). transit_encryption is required with an
   # iam = DISABLED because the access point + EFS SG + the django_efs ClientMount
   # policy already gate access (no per-access-point IAM enforcement).
   volume {
@@ -160,6 +167,19 @@ resource "aws_ecs_task_definition" "django" {
       transit_encryption = "ENABLED"
       authorization_config {
         access_point_id = aws_efs_access_point.singularity.id
+        iam             = "DISABLED"
+      }
+    }
+  }
+
+  volume {
+    name = "init_flags"
+
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.main.id
+      transit_encryption = "ENABLED"
+      authorization_config {
+        access_point_id = aws_efs_access_point.init_flags.id
         iam             = "DISABLED"
       }
     }
