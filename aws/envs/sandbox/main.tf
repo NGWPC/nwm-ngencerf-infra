@@ -81,7 +81,7 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "r8a.12xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260626231110Z-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260630053036Z-aws-migration"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260616202855Z-mpena-aws-migration"
 
   # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
@@ -99,9 +99,9 @@ module "ngencerf" {
 
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260616203930Z-mpena-aws-migration"
-    "nwm-fcst-mgr" = "20260616203335Z-mpena-aws-migration"
-    "nwm-verf"     = "20260616203352Z-mpena-aws-migration"
+    "nwm-cal-mgr"  = "20260630042634Z-peter_aws_migration"
+    "nwm-fcst-mgr" = "20260630042632Z-peter_aws_migration"
+    "nwm-verf"     = "20260629185332Z-peter_aws_migration"
   }
 
   rds_instance_class        = "db.r7g.large"
