@@ -85,6 +85,19 @@ resource "aws_ecs_task_definition" "django" {
         # explicit :80 (normalize_base_url appends :8000 otherwise). The Nuxt UI
         # base in nuxt.tf carries /api the same way.
         { name = "NGENCERF_BASE_URL", value = "http://${module.alb.dns_name}:80/api" },
+
+        # NGENCERF_UI_URL: where the Django task reaches the running Nuxt UI. In
+        # SLURM mode the Fargate task cannot inspect the UI container over Docker
+        # (Fargate exposes no Docker daemon), so git_util.py HTTP-GETs the UI's
+        # build-time git-info file from this URL (settings.py derives
+        # NGENCERF_UI_GIT_INFO_URL = NGENCERF_UI_URL + /ngencerf-ui_git_info.json).
+        # Point it at the ALB default route (anything not /api/* -> the Nuxt
+        # target group): no /api prefix, and no :80 needed because http defaults
+        # to port 80, which is the ALB listener (this value also skips
+        # normalize_base_url, so nothing appends :8000). Set on its own, not
+        # derived from NGENCERF_BASE_URL, so the UI and API can move to different
+        # hosts or ports independently.
+        { name = "NGENCERF_UI_URL", value = "http://${module.alb.dns_name}" },
         { name = "SLURM_REST_ENDPOINT", value = "http://${local.pcs_slurmrestd_endpoint.private_ip_address}:${local.pcs_slurmrestd_endpoint.port}" },
         { name = "SLURM_JWT_SECRET_ARN", value = awscc_pcs_cluster.main[0].slurm_configuration.auth_key.secret_arn },
         { name = "SLURM_API_VERSION", value = "v0.0.43" },
