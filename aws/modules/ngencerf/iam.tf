@@ -81,17 +81,20 @@ resource "aws_iam_role" "lambda_helper" {
 
 # --- ECS task execution: fetch secrets at task start ------------------
 # AmazonECSTaskExecutionRolePolicy doesn't grant secretsmanager:GetSecretValue
-# or kms:Decrypt for customer-managed CMKs. Add explicitly, scoped to our 2
-# secrets and the secrets CMK.
+# or kms:Decrypt for customer-managed CMKs. Add explicitly, scoped to the app
+# secrets (DB + Django key on our CMK, plus the external LDAP bind secret when
+# AD is enabled) and the secrets CMK. The LDAP secret uses the AWS-managed
+# aws/secretsmanager key, which authorizes decrypt via GetSecretValue, so it
+# needs no CMK grant. The for expression adds its ARN only when AD is enabled.
 
 data "aws_iam_policy_document" "ecs_task_execution_secrets" {
   statement {
     effect  = "Allow"
     actions = ["secretsmanager:GetSecretValue"]
-    resources = [
+    resources = concat([
       aws_secretsmanager_secret.db.arn,
       aws_secretsmanager_secret.django_secret_key.arn,
-    ]
+    ], [for s in data.aws_secretsmanager_secret.ldap_bind : s.arn])
   }
   statement {
     effect    = "Allow"

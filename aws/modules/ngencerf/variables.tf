@@ -34,6 +34,12 @@ variable "django_memory" {
   default     = "16384"
 }
 
+variable "enable_active_directory" {
+  type        = bool
+  description = "When true, wires Active Directory / LDAP authentication into the Django task: sets ACTIVE_DIRECTORY_ENABLED plus the LDAP_* env vars and injects the bind-account password from ldap_bind_secret_name. Default false leaves standard Django auth (the feature ships in the image but stays off unless an env opts in)."
+  default     = false
+}
+
 variable "enable_pcs" {
   type        = bool
   description = "When true, provisions the AWS PCS (managed Slurm) cluster, compute (default + heavy) + login node groups, the two named queues, node IAM instance profile, security group, and launch template (all in pcs.tf). Default false so envs that do not run compute stay untouched; set true per env that runs PCS (e.g. sandbox)."
@@ -55,6 +61,36 @@ variable "enterprise_data_url" {
   type        = string
   description = "Base URL of the EDFS / NOAA Enterprise Data Services endpoint the server fetches hydrofabric geopackages, observational streamflow, and module-parameter metadata from at gage-create time (ENTERPRISE_DATA_URL in settings.py: os.getenv with no in-image default). Test: http://edfs.test.nextgenwaterprediction.com/ ; Optimization: https://edfs.oe.nextgenwaterprediction.com/ . Must match enterprise_data_env. EDFS is private NOAA infra with no public DNS record, so the env's VPC must have a resolver path to it."
   default     = "http://edfs.test.nextgenwaterprediction.com/"
+}
+
+variable "ldap_bind_dn" {
+  type        = string
+  description = "LDAP bind identity: the read-only service account the server authenticates AS to look up users, as a userPrincipalName (\"svc-ldap-ro@example.com\") or a full DN. Only used when enable_active_directory = true."
+  default     = ""
+}
+
+variable "ldap_bind_secret_name" {
+  type        = string
+  description = "Name of an EXISTING Secrets Manager secret (owned outside this stack) holding the LDAP bind password under a \"password\" key. Looked up by name for its ARN only; the value never enters Terraform state (ECS pulls it at task start). Only used when enable_active_directory = true."
+  default     = ""
+}
+
+variable "ldap_server_uri" {
+  type        = string
+  description = "LDAP server URI the Django task binds to, e.g. \"ldap://ad.example.com\" (plain, port 389) or \"ldaps://ad.example.com\" (TLS, port 636). Only used when enable_active_directory = true."
+  default     = ""
+}
+
+variable "ldap_system_name" {
+  type        = string
+  description = "Token selecting the AD authorization groups: the server admits members of ngencerf-<name>-users and grants staff to ngencerf-<name>-admins (LDAP_SYSTEM_NAME in settings.py). Only used when enable_active_directory = true."
+  default     = ""
+}
+
+variable "ldap_use_ssl" {
+  type        = bool
+  description = "When true the LDAP connection uses SSL/TLS (pair with an ldaps:// ldap_server_uri); default false for plain LDAP on port 389. Only used when enable_active_directory = true."
+  default     = false
 }
 
 variable "name_prefix" {

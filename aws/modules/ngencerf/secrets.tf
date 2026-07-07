@@ -112,3 +112,14 @@ resource "aws_secretsmanager_secret_version" "django_secret_key" {
   secret_id     = aws_secretsmanager_secret.django_secret_key.id
   secret_string = random_password.django_secret_key.result
 }
+
+# --- LDAP bind (Active Directory service account) ---------------------
+# Read-only AD service account used for LDAP-bind auth. This secret is
+# created and owned OUTSIDE this stack (by the AD / account admins), so we
+# look it up by NAME for its ARN only and never read its version, so the
+# bind password never enters Terraform state. ECS pulls the value straight
+# from Secrets Manager at task start (django.tf secrets block). IA-5.
+data "aws_secretsmanager_secret" "ldap_bind" {
+  count = var.enable_active_directory ? 1 : 0
+  name  = var.ldap_bind_secret_name
+}

@@ -102,6 +102,21 @@ module "ngencerf" {
   enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/"
   enterprise_data_env = "test"
 
+  # Active Directory / LDAP auth against the NGWPC AWS Managed Microsoft AD.
+  # Off in the module by default; sandbox opts in. The bind PASSWORD comes from
+  # the existing Secrets Manager secret svc-ldap-ro-testdev (read-only AD service
+  # account, created outside this stack) via its "password" key, so it never
+  # enters Terraform state. LDAP_SYSTEM_NAME = "dev" means the server admits
+  # members of ngencerf-dev-users (staff: ngencerf-dev-admins). Server URI uses
+  # the AD DNS name (Kevin added a Route 53 record resolving it inside
+  # SBOX-Compute), not a pinned DC IP, so AD can fail over across controllers;
+  # plain LDAP on 389.
+  enable_active_directory = true
+  ldap_server_uri         = "ldap://nextgenwaterprediction.com"
+  ldap_system_name        = "dev"
+  ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
+  ldap_bind_secret_name   = "svc-ldap-ro-testdev"
+
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {
     "nwm-cal-mgr"  = "20260630042634Z-peter_aws_migration"

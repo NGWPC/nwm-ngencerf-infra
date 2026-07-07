@@ -116,12 +116,31 @@ resource "aws_ecs_task_definition" "django" {
         # default in settings.py, so leaving them unset would break a real run.
         { name = "HOST_DATA_ROOT", value = "/ngencerf-app/data/ngen-cal-data" },
         { name = "NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-cal-mgr.sif" },
+        ] : [], var.enable_active_directory ? [
+        # Active Directory / LDAP auth. settings.py reads these via os.getenv;
+        # ACTIVE_DIRECTORY_ENABLED gates the whole feature. The bind PASSWORD is
+        # NOT here, it is injected from Secrets Manager via the secrets block
+        # below. LDAP_USER_SEARCH_BASE_DN + LDAP_DOMAIN fall back to the image
+        # defaults (DC=nextgenwaterprediction,DC=com). Only set when enabled.
+        { name = "ACTIVE_DIRECTORY_ENABLED", value = "true" },
+        { name = "LDAP_SERVER_URI", value = var.ldap_server_uri },
+        { name = "LDAP_SYSTEM_NAME", value = var.ldap_system_name },
+        { name = "LDAP_BIND_DN", value = var.ldap_bind_dn },
+        { name = "LDAP_USE_SSL", value = var.ldap_use_ssl ? "true" : "false" },
       ] : [])
 
-      secrets = [
+      # LDAP bind password comes from the "password" key of the existing external
+      # secret (data.aws_secretsmanager_secret.ldap_bind, secrets.tf). The for
+      # expression yields one entry when AD is enabled (count 1) and none when
+      # off, so the value is never read by Terraform and never enters state; ECS
+      # pulls it straight from Secrets Manager at task start.
+      secrets = concat([
         { name = "CERF_SERVER_DATABASE_PASSWORD", valueFrom = aws_secretsmanager_secret.db.arn },
         { name = "CERF_SERVER_SECRET_KEY", valueFrom = aws_secretsmanager_secret.django_secret_key.arn },
-      ]
+        ], [for s in data.aws_secretsmanager_secret.ldap_bind : {
+          name      = "LDAP_BIND_PASSWORD"
+          valueFrom = "${s.arn}:password::"
+      }])
 
       mountPoints = [
         {
