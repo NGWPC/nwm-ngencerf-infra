@@ -86,8 +86,8 @@ module "ngencerf" {
   pcs_compute_heavy_instance_type   = "r8a.12xlarge"
 
   # ngencerf-server and ngencerf-ui Docker images
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260705224246Z-aws-migration"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260701171128Z-mpena-aws-migration"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260708225741Z-aws-migration"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260708223845Z-mpena-aws-migration"
 
   # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
   # uses its own unique prefix; seed a .keep object in each prefix so it exists
