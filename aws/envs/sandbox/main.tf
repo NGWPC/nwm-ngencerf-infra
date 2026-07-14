@@ -117,6 +117,12 @@ module "ngencerf" {
   ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
   ldap_bind_secret_name   = "svc-ldap-ro-testdev"
 
+  # Mandatory MFA layered on top of the AD password check. Applies to every
+  # user, AD-backed included: each one enrolls an authenticator app on next login
+  # and gets recovery codes. Enrollment lives in the database, so destroying this
+  # env wipes it and everyone re-enrolls on the next bring-up.
+  enable_mfa = true
+
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {
     "nwm-cal-mgr"  = "20260630042634Z-peter_aws_migration"

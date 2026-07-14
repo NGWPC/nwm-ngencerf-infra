@@ -40,6 +40,12 @@ variable "enable_active_directory" {
   default     = false
 }
 
+variable "enable_mfa" {
+  type        = bool
+  description = "When true, turns on mandatory multi-factor authentication in the Django task by setting MFA_ENABLED. The server enforces it after the password check, so it covers every user including Active-Directory-backed ones: on next login each user must enroll an authenticator app (TOTP) and is issued recovery codes. Enrollment state lives in the database, so destroying an env's RDS wipes it and every user re-enrolls on the next bring-up. Default false leaves MFA off (the feature ships in the image but stays off unless an env opts in)."
+  default     = false
+}
+
 variable "enable_pcs" {
   type        = bool
   description = "When true, provisions the AWS PCS (managed Slurm) cluster, compute (default + heavy) + login node groups, the two named queues, node IAM instance profile, security group, and launch template (all in pcs.tf). Default false so envs that do not run compute stay untouched; set true per env that runs PCS (e.g. sandbox)."
