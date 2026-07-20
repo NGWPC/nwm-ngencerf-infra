@@ -110,15 +110,23 @@ resource "aws_ecs_task_definition" "django" {
           { name = "SLURM_REST_JOB_ENVIRONMENT", value = jsonencode(["PATH=/opt/aws/pcs/scheduler/slurm-25.11/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]) },
 
           # Host (compute-node) paths the Slurm adapter translates container paths
-          # into. The cal-mgr job runs on a compute node where the EFS root is
-          # mounted at /ngencerf-app (pcs.tf launch template). HOST_DATA_ROOT is the
+          # into. Jobs run on a compute node where the EFS root is mounted at
+          # /ngencerf-app (pcs.tf launch template). HOST_DATA_ROOT is the
           # translation target (job_executor_slurm.py:
           # input_file.replace(CONTAINER_DATA_ROOT, HOST_DATA_ROOT)) and the host
-          # side of the singularity bind-mount; the SIF path points at the stable
-          # symlink so SIF swaps never touch Django. Both are os.getenv with no
-          # default in settings.py, so leaving them unset would break a real run.
+          # side of the singularity bind-mount. The three SIF paths map to the
+          # server's per-job-type singularity commands (settings.py
+          # SINGULARITY_RUNTIME_INFO): cal-mgr runs calibration/validation,
+          # fcst-mgr runs cold_start/forecast/hindcast, and nwm-eval-mgr (the
+          # NWM_EVAL_* var; replaced nwm-verf) runs verification. Each points at
+          # the stable symlink sif_sync.tf maintains so SIF swaps never touch
+          # Django. All are os.getenv with NO default in settings.py, so an unset
+          # one bakes the literal "None" into that job type's singularity command
+          # and breaks its runs.
           { name = "HOST_DATA_ROOT", value = "/ngencerf-app/data/ngen-cal-data" },
           { name = "NWM_CAL_MGR_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-cal-mgr.sif" },
+          { name = "NWM_FCST_MGR_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-fcst-mgr.sif" },
+          { name = "NWM_EVAL_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-eval-mgr.sif" },
         ] : [],
 
         var.enable_active_directory ? [

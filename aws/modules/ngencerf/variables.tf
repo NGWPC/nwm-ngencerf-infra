@@ -211,7 +211,7 @@ variable "redis_node_type" {
 
 variable "sif_workloads" {
   type        = map(string)
-  description = "Workload SIFs to stage onto EFS for AWS PCS jobs: map of workload name -> OCI artifact tag. For each entry the sif-sync bootstrap task (sif_sync.tf) pulls ghcr.io/ngwpc/<name>-sif:<tag> onto EFS /singularity, writes <name>-<tag>.sif, and repoints the stable <name>.sif symlink. Names follow the workload images, e.g. \"nwm-cal-mgr\", \"nwm-fcst-mgr\", \"nwm-verf\". Only used when enable_pcs = true; staged via `make bootstrap`. Default empty (no SIFs staged)."
+  description = "Workload SIFs to stage onto EFS for AWS PCS jobs: map of workload name -> OCI artifact tag. For each entry the sif-sync bootstrap task (sif_sync.tf) pulls ghcr.io/ngwpc/<name>-sif:<tag> onto EFS /singularity, writes <name>-<tag>.sif, and repoints the stable <name>.sif symlink. Names follow the workload images, e.g. \"nwm-cal-mgr\", \"nwm-fcst-mgr\", \"nwm-eval-mgr\". Only used when enable_pcs = true; staged via `make bootstrap`. Default empty (no SIFs staged)."
   default     = {}
 }
 
