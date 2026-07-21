@@ -158,6 +158,24 @@ data "aws_iam_policy_document" "django_s3" {
     actions   = ["s3:GetObject"]
     resources = ["arn:aws:s3:::ngwpc-forcing/*"]
   }
+
+  # Read-only on ngwpc-dev nwm-tools-data (Data account). The server's
+  # observation-data reads are moving from ngwpc-forcing to ngwpc-dev; the
+  # forcing statements above are kept during the transition and get removed
+  # once the ngwpc-dev path is the only one in use. GetObject is scoped to the
+  # nwm-tools-data prefix to match the Data-side bucket-policy grant (which is
+  # prefix-conditioned, not bucket-wide); widen both halves together if the
+  # server's data lands under a different prefix.
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:ListBucket"]
+    resources = ["arn:aws:s3:::ngwpc-dev"]
+  }
+  statement {
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::ngwpc-dev/nwm-tools-data/*"]
+  }
 }
 
 resource "aws_iam_role_policy" "django_s3" {

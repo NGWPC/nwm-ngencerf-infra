@@ -123,8 +123,8 @@ data "aws_iam_policy_document" "pcs_node_static_data_s3" {
     effect  = "Allow"
     actions = ["s3:GetObject"]
     resources = [
-      "arn:aws:s3:::ngwpc-dev/ngen-static-files/*",
-      "arn:aws:s3:::ngwpc-dev/rte-test-data/esmf/*",
+      "arn:aws:s3:::ngwpc-dev/nwm-tools-data/esmf/*",
+      "arn:aws:s3:::ngwpc-dev/nwm-tools-data/nwm_retrospective/*",
     ]
   }
 }

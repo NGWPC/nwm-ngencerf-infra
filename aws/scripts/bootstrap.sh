@@ -92,7 +92,8 @@ run_task() {
 # --- static-data: load the ngen static-input tree onto EFS via the login node
 # The PCS login node (c6i.large) has git + aws-cli + the EFS root mounted at
 # /ngencerf-app. We run the load there over SSM Run Command: sync the bulk from
-# ngwpc-dev and clone the config dirs from the public repos. The target is the
+# ngwpc-dev and clone the config dirs + verification parquet inputs from the
+# public repos. The target is the
 # cal-data subtree both tiers read (server /ngencerf/data/ngen-static-files ==
 # login /ngencerf-app/data/ngen-cal-data/ngen-static-files). Cross-account read
 # on ngwpc-dev is granted to the node role (pcs.tf) + the Data side.
@@ -117,9 +118,9 @@ run_static_login() {
 set -eu
 STATIC=/ngencerf-app/data/ngen-cal-data/ngen-static-files
 mkdir -p "$STATIC"
-echo "Syncing bulk static tree from ngwpc-dev..."
-aws s3 sync s3://ngwpc-dev/ngen-static-files "$STATIC" --no-progress
-aws s3 sync s3://ngwpc-dev/rte-test-data/esmf "$STATIC/forcing_static_dir" --no-progress
+echo "Syncing nwm_retrospective + esmf from ngwpc-dev (nwm-tools-data)..."
+aws s3 sync s3://ngwpc-dev/nwm-tools-data/nwm_retrospective "$STATIC/nwm_retrospective" --no-progress
+aws s3 sync s3://ngwpc-dev/nwm-tools-data/esmf "$STATIC/forcing_static_dir" --no-progress
 echo "Cloning module_parameter_files (nwm-msw-mgr)..."
 cd "$STATIC" && rm -rf module_parameter_files tmp-msw
 git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-msw-mgr.git tmp-msw
@@ -130,6 +131,13 @@ cd "$STATIC" && rm -rf bmi_forcing_templates tmp-forcing
 git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/ngen-forcing.git tmp-forcing
 ( cd tmp-forcing && git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates )
 mv tmp-forcing/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates "$STATIC/bmi_forcing_templates" && rm -rf tmp-forcing
+echo "Cloning verification_data parquet inputs (nwm-eval-mgr)..."
+cd "$STATIC" && rm -rf verification_data tmp-nwm-eval-mgr
+git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-eval-mgr.git tmp-nwm-eval-mgr
+( cd tmp-nwm-eval-mgr && git sparse-checkout set data/inputs/gage_files )
+mkdir -p "$STATIC/verification_data"
+find tmp-nwm-eval-mgr/data/inputs/gage_files -type f -name '*.parquet' -exec cp {} "$STATIC/verification_data/" \;
+rm -rf tmp-nwm-eval-mgr
 echo "Static data staged. Top level:"
 ls -la "$STATIC"
 EOS
