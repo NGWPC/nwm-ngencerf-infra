@@ -49,7 +49,6 @@ resource "aws_ecs_task_definition" "django" {
           { name = "GUNICORN_MAX_REQUESTS", value = "300" },
           { name = "GUNICORN_MAX_REQUESTS_JITTER", value = "100" },
           { name = "GUNICORN_GRACEFUL_TIMEOUT", value = "120" },
-          { name = "PROD_FLAG", value = "1" },
           { name = "CERF_SERVER_DATABASE_NAME", value = "ngencerf" },
           { name = "CERF_SERVER_DATABASE_USER", value = "ngencerf" },
           { name = "CERF_SERVER_DATABASE_HOST", value = module.rds.db_instance_address },

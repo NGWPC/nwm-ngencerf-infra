@@ -125,7 +125,7 @@ module "ngencerf" {
 
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260720220011Z-peter_aws_migration"
+    "nwm-cal-mgr"  = "20260721172335Z-peter_aws_migration"
     "nwm-fcst-mgr" = "20260720220015Z-peter_aws_migration"
     "nwm-eval-mgr" = "20260720213544Z-peter_aws_migration"
   }
