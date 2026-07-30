@@ -82,10 +82,10 @@ module "ngencerf" {
   pcs_compute_default_instance_type = "c5n.9xlarge"
   pcs_compute_heavy_instance_type   = "r8a.12xlarge"
 
-  # ngencerf-server and ngencerf-ui Docker images. Public-facing envs pin
-  # immutable timestamped tags, never a mutable alias like latest.
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260727184243Z-development"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260728064702Z-development"
+  # ngencerf-server and ngencerf-ui Docker images. Interim `latest` tags while
+  # this env is not yet in use; replace with pinned release tags at release cut.
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:latest"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:latest"
 
   # The public origin users reach this env at. Sets the Django CSRF trusted
   # origin + X-Forwarded-Proto trust and points the UI's browser-facing API
@@ -122,11 +122,12 @@ module "ngencerf" {
   enable_mfa = true
 
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
-  # Pinned timestamped builds, same rule as the images above.
+  # Interim `latest` tags while this env is not yet in use; replace with pinned
+  # release tags at release cut.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260728080227Z-development"
-    "nwm-fcst-mgr" = "20260728173527Z-development"
-    "nwm-eval-mgr" = "20260723124113Z-development"
+    "nwm-cal-mgr"  = "latest"
+    "nwm-fcst-mgr" = "latest"
+    "nwm-eval-mgr" = "latest"
   }
 
   rds_instance_class        = "db.r7g.large"
