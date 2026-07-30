@@ -84,7 +84,7 @@ module "ngencerf" {
 
   # ngencerf-server and ngencerf-ui Docker images. Public-facing envs pin
   # immutable timestamped tags, never a mutable alias like latest.
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260727184243Z-development"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260730181519Z-development"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260728064702Z-development"
 
   # The public origin users reach this env at. Sets the Django CSRF trusted
@@ -124,9 +124,9 @@ module "ngencerf" {
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   # Pinned timestamped builds, same rule as the images above.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260728080227Z-development"
-    "nwm-fcst-mgr" = "20260728173527Z-development"
-    "nwm-eval-mgr" = "20260723124113Z-development"
+    "nwm-cal-mgr"  = "20260730174017Z-development"
+    "nwm-fcst-mgr" = "20260730174031Z-development"
+    "nwm-eval-mgr" = "20260728195512Z-development"
   }
 
   rds_instance_class        = "db.r7g.large"
