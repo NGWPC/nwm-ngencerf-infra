@@ -111,7 +111,7 @@ a `lifecycle { ignore_changes = [task_definition] }` rule is an open decision.)
 
 ## Cost (sandbox, fully running 24x7)
 
-With the uniform prod-tier sizing, the always-on cost is far higher than the old dev tier (~$4/day) and is dominated by the MEDIUM PCS controller (billed hourly even at 0 compute, plus the accounting fee), the prod data tier (db.r7g.large RDS + cache.r7g.large Redis), and the 8 vCPU / 16 GiB Django Fargate task, on top of the internal ALB (~$0.55/day) and WAFv2 (~$0.37/day) (egress uses the LZA centralized NAT in the Network account, so this stack provisions no NAT Gateway of its own). PCS *compute* (c5n.9xlarge / r8a.12xlarge) autoscales from 0, so it bills only while a job runs. Tear the stack down nights/weekends to avoid the prod-tier 24x7 cost.
+The always-on cost is dominated by the MEDIUM PCS controller (billed hourly even at 0 compute, plus the accounting fee), the data tier (db.r7g.large RDS + cache.r7g.large Redis), and the 8 vCPU / 16 GiB Django Fargate task, on top of the internal ALB (~$0.55/day) and WAFv2 (~$0.37/day). Egress uses the LZA centralized NAT in the Network account, so this stack provisions no NAT Gateway of its own. PCS *compute* (c5n.9xlarge / r8a.12xlarge) autoscales from 0, so it bills only while a job runs.
 
 Tear down nights/weekends with `terraform plan -destroy && apply` from `envs/sandbox/` to cut the running cost during off-hours. State bucket + KMS key for state survive a destroy.
 
