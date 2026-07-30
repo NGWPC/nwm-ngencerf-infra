@@ -1,16 +1,12 @@
 provider "aws" {
   region = "us-east-1"
 
+  # Single source of tags (local.common_tags in main.tf), used here for every
+  # aws-provider resource AND passed to the module as var.tags so the awscc PCS
+  # resources (which ignore default_tags) carry the identical set, including the
+  # Team tag NGWPC enforces via SCP.
   default_tags {
-    tags = {
-      Project     = "ngencerf"
-      ManagedBy   = "Terraform"
-      Repo        = "nwm-ngencerf-infra"
-      Team        = "nwm"
-      POC         = "Miguel Pena"
-      Owner       = var.owner
-      Environment = "optimization-uat"
-    }
+    tags = local.common_tags
   }
 }
 

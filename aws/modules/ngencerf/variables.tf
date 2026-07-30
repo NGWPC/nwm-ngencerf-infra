@@ -191,6 +191,12 @@ variable "public_subnet_ids" {
   description = "Public subnet IDs (ALB)."
 }
 
+variable "public_url" {
+  type        = string
+  description = "Public HTTPS origin when this env is served through the centralized public edge (e.g. https://ngencerf-ea.nextgenwaterprediction.com). Sets the Django CSRF trusted origin, enables X-Forwarded-Proto trust, and points the UI's browser-facing API base at this origin. Empty (default) leaves all three off for internal-only envs."
+  default     = ""
+}
+
 variable "rds_allocated_storage_gib" {
   type        = number
   description = "RDS allocated storage in GiB."

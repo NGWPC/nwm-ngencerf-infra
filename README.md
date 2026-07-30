@@ -14,20 +14,17 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 ## Environments
 
-Eight NGWPC environments, each its own root module under `aws/envs/<...>/` with its own state file. All eight call the same shared module at `aws/modules/ngencerf/`. The module is VPC-agnostic: it accepts `vpc_id` + `private_subnet_ids` + `public_subnet_ids` as caller-supplied inputs. No env creates a VPC; every env discovers its LZA-laid VPC via `data` sources (`data "aws_vpc"` / `data "aws_subnets"`) and passes the IDs into the module.
+Three NGWPC environments, each its own root module under `aws/envs/<env>/` with its own state file. All three call the same shared module at `aws/modules/ngencerf/`. The module is VPC-agnostic: it accepts `vpc_id` + `private_subnet_ids` + `public_subnet_ids` as caller-supplied inputs. No env creates a VPC; every env discovers its LZA-laid VPC via `data` sources (`data "aws_vpc"` / `data "aws_subnets"`) and passes the IDs into the module.
 
-Sizing is uniform across all eight envs: every env runs the same prod-tier resources (`db.r7g.large` RDS + 200 GiB, `cache.r7g.large` Redis, c5n.9xlarge / r8a.12xlarge PCS compute, 8 vCPU / 16 GiB Django, 2 vCPU / 4 GiB Nuxt) so sandbox and the test envs regression-test against prod-shaped infrastructure. Only the per-env `production` flag varies (it gates multi-AZ RDS, Redis failover, and deletion protection); `sandbox` keeps it off so it stays quick to tear down.
+Sizing is uniform across all three envs: every env runs the same prod-tier resources (`db.r7g.large` RDS + 200 GiB, `cache.r7g.large` Redis, c5n.9xlarge / r8a.12xlarge PCS compute, 8 vCPU / 16 GiB Django, 2 vCPU / 4 GiB Nuxt) so sandbox regression-tests against prod-shaped infrastructure. Only the per-env `production` flag varies (it gates multi-AZ RDS, Redis failover, and deletion protection); `sandbox` keeps it off so it stays quick to tear down.
 
 | Env                  | Account                | VPC source       | RDS class      |
 |----------------------|------------------------|------------------|----------------|
 | `sandbox`            | NGWPC Sandbox          | LZA data lookup  | db.r7g.large   |
-| `test/dev`           | NGWPC Test             | LZA data lookup  | db.r7g.large   |
-| `test/dev2`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
-| `test/perf`          | NGWPC Test             | LZA data lookup  | db.r7g.large   |
-| `test/integration`   | NGWPC Test             | LZA data lookup  | db.r7g.large   |
-| `optimization/ea`    | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
-| `optimization/uat`   | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
-| `optimization/uat2`  | NGWPC Optimization     | LZA data lookup  | db.r7g.large   |
+| `ea`                 | NGWPC Test             | LZA data lookup  | db.r7g.large   |
+| `uat2`               | NGWPC Test             | LZA data lookup  | db.r7g.large   |
+
+`ea` and `uat2` are the public customer-acceptance envs. They run the identical stack with the ALB still internal; internet traffic arrives through the centralized public edge (an internet-facing ALB behind WAF in the Network account, forwarding to an NLB in the Test account that targets each env's internal ALB), with public DNS at `https://ngencerf-ea.nextgenwaterprediction.com` and `https://ngencerf-uat2.nextgenwaterprediction.com`. Both set the module's `public_url` input (wires the Django CSRF trusted origin, `X-Forwarded-Proto` trust, and the UI's browser-facing API base), pin immutable timestamped image tags, and run the WAF in `block` mode.
 
 **Resource sizing (uniform across all envs).** Every env runs the same prod-tier sizes; only the `production` flag (multi-AZ RDS, Redis failover, deletion protection) differs per env. PCS compute autoscales from 0, so it bills only while a job runs. Every size below is a module variable with the prod default shown; any env can override it per-resource in its `main.tf` (e.g. `nuxt_cpu`, `django_memory`, `rds_instance_class`, `pcs_controller_size`, `pcs_max_nodes_per_partition`).
 
@@ -72,12 +69,12 @@ make destroy ENV=sandbox # tear it down (saves cost)
 
 ## Day-to-day commands
 
-All targets accept `ENV=<env-path>` (default `sandbox`). Valid env paths: `sandbox`, `test/dev`, `test/dev2`, `test/perf`, `test/integration`, `optimization/ea`, `optimization/uat`, `optimization/uat2`.
+All targets accept `ENV=<env>` (default `sandbox`). Valid envs: `sandbox`, `ea`, `uat2`.
 
 ```bash
 make help                          # list all targets
-make plan ENV=test/dev             # plan NGWPC Test dev env
-make apply ENV=optimization/uat    # apply NGWPC Optimization uat env
+make plan ENV=ea                   # plan the EA env (NGWPC Test account)
+make apply ENV=uat2                # apply the UAT2 env (NGWPC Test account)
 make destroy ENV=sandbox           # destroy sandbox (cost saver)
 make smoke ENV=sandbox             # end-to-end smoke against sandbox
 make fmt                           # terraform fmt -recursive
@@ -148,7 +145,7 @@ Inline `# SC-28: ...` / `# AC-6: ...` comments throughout the module map each re
 
 ### Per-env hardening toggles
 
-For prod-tier environments (everything outside `sandbox` and `test/dev`), the env's `main.tf` flips these knobs:
+For prod-tier environments (everything outside `sandbox`), the env's `main.tf` flips these knobs:
 
 - `production = true`: multi-AZ RDS, deletion protection on, `force_destroy = false` on durable resources (CP-2, SC-28)
 - `waf_rule_action = "block"`: WAF enforces matching rules in prod (vs. `count` for observation in dev) (SC-7, SI-4)
@@ -181,7 +178,7 @@ Concretely:
 ```text
 nwm-ngencerf-infra/
 ├── README.md                       this file
-├── Makefile                        dev shortcuts (ENV=sandbox|test/dev|test/dev2|test/perf|test/integration|optimization/ea|optimization/uat|optimization/uat2)
+├── Makefile                        dev shortcuts (ENV=sandbox|ea|uat2)
 ├── .gitignore                      Terraform-aware ignores; secrets never committed
 ├── .pre-commit-config.yaml         fmt/validate/tflint/checkov/gitleaks on commit
 ├── .tflint.hcl                     Terraform linter config
@@ -221,15 +218,8 @@ nwm-ngencerf-infra/
     │   │   ├── outputs.tf          re-exports module outputs (alb_dns_name, vpc_id, subnets)
     │   │   ├── backend.hcl.example per-account backend template
     │   │   └── terraform.tfvars.example
-    │   ├── test/                   NGWPC Test account (consumes LZA VPC)
-    │   │   ├── dev/                dev env
-    │   │   ├── dev2/               prod-tier env
-    │   │   ├── perf/               prod-tier env
-    │   │   └── integration/        prod-tier env
-    │   └── optimization/           NGWPC Optimization account (consumes LZA VPC)
-    │       ├── ea/                 prod-tier env (customer-facing)
-    │       ├── uat/                prod-tier env
-    │       └── uat2/               prod-tier env
+    │   ├── ea/                     NGWPC Test account; public customer-acceptance env (prod-tier)
+    │   └── uat2/                   NGWPC Test account; public customer-acceptance env (prod-tier)
     └── scripts/
         └── smoke.sh                end-to-end smoke called by `make smoke ENV=<env>`
 ```

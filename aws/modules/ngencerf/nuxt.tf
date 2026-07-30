@@ -35,8 +35,10 @@ resource "aws_ecs_task_definition" "nuxt" {
         # Nuxt 3 auto-overrides runtimeConfig.public.ngencerfBaseUrl at runtime
         # only when the env var is named NUXT_PUBLIC_<KEY> (the un-prefixed
         # NGENCERF_BASE_URL in nuxt.config.ts is the BUILD-time default only).
-        # Value /api routes through ALB rule /api/* -> Django; HTTPS lands later.
-        { name = "NUXT_PUBLIC_NGENCERF_BASE_URL", value = "http://${module.alb.dns_name}/api" },
+        # Value /api routes through ALB rule /api/* -> Django. Public envs
+        # (public_url set) hand the browser the public https origin instead of
+        # the internal ALB DNS, which the browser cannot reach.
+        { name = "NUXT_PUBLIC_NGENCERF_BASE_URL", value = var.public_url != "" ? "${var.public_url}/api" : "http://${module.alb.dns_name}/api" },
       ]
 
       logConfiguration = {

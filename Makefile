@@ -5,9 +5,7 @@ TERRAFORM_DIR := aws/envs/$(ENV)
 
 help:
 	@echo "Targets (pass ENV=<env>, default sandbox):"
-	@echo "  Valid envs: sandbox, test/dev, test/dev2, test/perf,"
-	@echo "              test/integration, optimization/ea, optimization/uat,"
-	@echo "              optimization/uat2"
+	@echo "  Valid envs: sandbox, ea, uat2"
 	@echo ""
 	@echo "  init                - terraform init (uses env's backend.hcl)"
 	@echo "  plan                - terraform plan"
@@ -20,14 +18,14 @@ help:
 	@echo "  lint                - tflint + checkov"
 	@echo "  pre-commit-install  - install pre-commit hooks (one-time)"
 	@echo ""
-	@echo "Usage: make plan ENV=test/dev"
+	@echo "Usage: make plan ENV=ea"
 	@echo ""
 	@echo "Bootstrap (one-time per AWS account, see aws/bootstrap/README.md):"
 	@echo "  cd aws/bootstrap && terraform init && terraform apply"
 
 _check_env:
 	@if [ ! -d "$(TERRAFORM_DIR)" ]; then \
-		echo "ERROR: env '$(ENV)' not found. Valid: sandbox, test/{dev,dev2,perf,integration}, optimization/{ea,uat,uat2}"; \
+		echo "ERROR: env '$(ENV)' not found. Valid: sandbox, ea, uat2"; \
 		exit 1; \
 	fi
 

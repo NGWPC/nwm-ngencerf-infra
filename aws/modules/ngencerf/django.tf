@@ -152,6 +152,18 @@ resource "aws_ecs_task_definition" "django" {
           # enrollment lives in the database, so destroying an env's RDS wipes it
           # and every user re-enrolls on the next bring-up.
           { name = "MFA_ENABLED", value = "true" },
+        ] : [],
+
+        # Public-edge settings, only when this env is served through the
+        # centralized public HTTPS edge (public ALB + NLB in front of this
+        # env's internal ALB). CSRF_TRUSTED_ORIGINS lets Django accept
+        # state-changing requests arriving from the public https origin;
+        # TRUST_X_FORWARDED_PROTO makes Django honor the edge's
+        # X-Forwarded-Proto header so redirects and absolute URLs keep the
+        # https scheme. Both are env-driven server knobs, inert when unset.
+        var.public_url != "" ? [
+          { name = "CSRF_TRUSTED_ORIGINS", value = var.public_url },
+          { name = "TRUST_X_FORWARDED_PROTO", value = "true" },
         ] : []
       )
 
