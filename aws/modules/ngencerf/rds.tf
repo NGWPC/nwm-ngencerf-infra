@@ -11,7 +11,7 @@ module "rds" {
   identifier = "${var.name_prefix}-db"
 
   engine               = "postgres"
-  engine_version       = "16.4"
+  engine_version       = "16.14"
   family               = "postgres16"
   major_engine_version = "16"
   instance_class       = var.rds_instance_class
@@ -45,6 +45,9 @@ module "rds" {
   performance_insights_enabled          = var.production
   performance_insights_retention_period = var.production ? 7 : 0
   monitoring_interval                   = var.production ? 60 : 0
+  # Auto-create the role, but give it a unique name to avoid account-wide collisions
+  create_monitoring_role                = var.production
+  monitoring_role_name                  = "${var.name_prefix}-rds-monitoring"
 
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
