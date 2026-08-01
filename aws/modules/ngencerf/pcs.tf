@@ -263,6 +263,19 @@ EOT
     resource_type = "volume"
     tags          = merge(var.tags, { Name = "${var.name_prefix}-pcs-node" })
   }
+
+  # GUARD: tag churn must never roll the compute node fleet. The node groups pin
+  # latest_version of this template, and ANY content change here (even a change
+  # to the tag VALUES fed into tag_specifications above) cuts a new version,
+  # which PCS treats as a node-group update: it
+  # drains and replaces every compute instance in the group.
+  # Instance/volume tags are applied at creation; later drift in var.tags is
+  # deliberately NOT propagated. To change instance tags for real, remove this
+  # ignore temporarily and treat the apply as a deliberate fleet roll (PCS lets
+  # running jobs finish, then replaces each node at idle).
+  lifecycle {
+    ignore_changes = [tag_specifications]
+  }
 }
 
 # --- PCS cluster (awscc) ------------------------------------------------
@@ -302,6 +315,13 @@ resource "awscc_pcs_cluster" "main" {
   }
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-pcs" })
+
+  # GUARD: same rationale as the launch template's lifecycle note above. An
+  # update to this resource makes PCS run a "cluster update" that drains and
+  # replaces compute nodes; resource-tag drift is not worth a fleet roll.
+  lifecycle {
+    ignore_changes = [tags]
+  }
 
   # PCS reads this cluster's security group during CreateCluster and rejects an
   # SG with no outbound rules. The SG's egress and ingress are separate
@@ -352,6 +372,12 @@ resource "awscc_pcs_compute_node_group" "compute_default" {
   subnet_ids = var.private_subnet_ids
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-compute-default" })
+
+  # GUARD: see the launch-template lifecycle note; tag drift alone must not
+  # trigger a node-group update (= drain + replace every node in the group).
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 resource "awscc_pcs_compute_node_group" "compute_heavy" {
@@ -379,6 +405,12 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
   subnet_ids = var.private_subnet_ids
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-compute-heavy" })
+
+  # GUARD: see the launch-template lifecycle note; tag drift alone must not
+  # trigger a node-group update (= drain + replace every node in the group).
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 # --- Login node group (awscc) -------------------------------------------
@@ -416,6 +448,12 @@ resource "awscc_pcs_compute_node_group" "login" {
   subnet_ids = [var.private_subnet_ids[0]]
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-login" })
+
+  # GUARD: see the launch-template lifecycle note; tag drift alone must not
+  # trigger a node-group update (= drain + replace the login node).
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 # --- Queues (awscc) -----------------------------------------------------
@@ -450,6 +488,11 @@ resource "awscc_pcs_queue" "c5n_9xlarge" {
   }
 
   tags = var.tags
+
+  # GUARD: see the launch-template lifecycle note.
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 resource "awscc_pcs_queue" "r8a_12xlarge" {
@@ -462,6 +505,11 @@ resource "awscc_pcs_queue" "r8a_12xlarge" {
   }]
 
   tags = var.tags
+
+  # GUARD: see the launch-template lifecycle note.
+  lifecycle {
+    ignore_changes = [tags]
+  }
 }
 
 # --- Slurm REST API wiring: Django (web tier) -> slurmrestd -------------
