@@ -65,9 +65,13 @@ module "ngencerf" {
   alb_internal = true
 
   # Customer-facing env: production-safe defaults on (multi-AZ RDS, deletion
-  # protection, force_destroy off) and the WAF enforcing (block, not count).
+  # protection, force_destroy off). The env's own WAF runs in count (observe)
+  # mode: the centrally managed WAF at the public edge already enforces the
+  # program rule set in front of this stack, and a second blocking ACL inside
+  # the path can 403 legitimate API traffic (managed SQLi rules can match
+  # JSON request bodies). Count keeps the logging without double enforcement.
   production      = true
-  waf_rule_action = "block"
+  waf_rule_action = "count"
 
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami
   # runs the Image Builder pipeline (~20-30 min on the FIRST apply) and the compute
