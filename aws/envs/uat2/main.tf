@@ -67,7 +67,7 @@ module "ngencerf" {
   # Customer-facing env: production-safe defaults on (multi-AZ RDS, deletion
   # protection, force_destroy off) and the WAF enforcing (block, not count).
   production      = true
-  waf_rule_action = "block"
+  waf_rule_action = "count"
 
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami
   # runs the Image Builder pipeline (~20-30 min on the FIRST apply) and the compute

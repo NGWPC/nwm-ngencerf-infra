@@ -117,7 +117,7 @@ module "ngencerf" {
   # must exist in THIS account's Secrets Manager before the first apply.
   enable_active_directory = true
   ldap_server_uri         = "ldap://nextgenwaterprediction.com"
-  ldap_system_name        = "dev"
+  ldap_system_name        = "oe"
   ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
   ldap_bind_secret_name   = "svc-ldap-ro-testdev"
 
