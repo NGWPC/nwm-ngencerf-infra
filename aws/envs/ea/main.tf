@@ -89,8 +89,8 @@ module "ngencerf" {
 
   # ngencerf-server and ngencerf-ui Docker images. Public-facing envs pin
   # immutable timestamped tags, never a mutable alias like latest.
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260817210008Z-development"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260818003612Z-development"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260818172414Z-development"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260818172353Z-development"
 
   # The public origin users reach this env at. Sets the Django CSRF trusted
   # origin + X-Forwarded-Proto trust and points the UI's browser-facing API
@@ -129,8 +129,8 @@ module "ngencerf" {
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   # Pinned timestamped builds, same rule as the images above.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260817172329Z-development"
-    "nwm-fcst-mgr" = "20260817172325Z-development"
+    "nwm-cal-mgr"  = "20260818142627Z-development"
+    "nwm-fcst-mgr" = "20260818142625Z-development"
     "nwm-eval-mgr" = "20260730211204Z-development"
   }
 
