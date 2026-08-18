@@ -227,6 +227,19 @@ resource "aws_launch_template" "pcs" {
   # translates those container paths to these host paths (HOST_DATA_ROOT in
   # django.tf). Mounting by file-system-id (not DNS) lets the efs helper pick the
   # AZ-local mount target. SC-28: encryption in transit.
+  #
+  # Unattended-upgrades are disabled at boot. The Ubuntu base ships with
+  # automatic background OS updates enabled, and their persistent apt timers
+  # run a catch-up upgrade shortly after every node boot (the AMI's package
+  # state is as old as its last bake). That upgrade can pull in
+  # systemd/udev/networkd and restart the network stack while a job is
+  # running; slurmd then goes silent past SlurmdTimeout and the controller
+  # marks the node NODE_FAIL, killing its jobs, after which the node recovers.
+  # These nodes are ephemeral and run a pinned AMI, so background patching
+  # adds risk without benefit: OS updates are delivered by baking and pinning
+  # a new AMI instead. write_files zeroes the APT::Periodic knobs early in
+  # boot (the apt.systemd.daily script then exits without acting); runcmd
+  # masks the apt-daily units as defense in depth.
   user_data = base64encode(<<EOT
 MIME-Version: 1.0
 Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
@@ -234,10 +247,17 @@ Content-Type: multipart/mixed; boundary="==MYBOUNDARY=="
 --==MYBOUNDARY==
 Content-Type: text/cloud-config; charset="us-ascii"
 
+write_files:
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Unattended-Upgrade "0";
+
 packages:
   - amazon-efs-utils
 
 runcmd:
+  - systemctl mask --now apt-daily.timer apt-daily-upgrade.timer apt-daily.service apt-daily-upgrade.service unattended-upgrades.service
   - mkdir -p /ngencerf-app
   - echo "${aws_efs_file_system.main.id}:/ /ngencerf-app efs tls,_netdev" >> /etc/fstab
   - mount -a -t efs defaults
@@ -312,6 +332,35 @@ resource "awscc_pcs_cluster" "main" {
     slurm_rest = {
       mode = "STANDARD"
     }
+
+    # Memory-aware scheduling. Slurm's default SelectTypeParameters (CR_CPU)
+    # counts only CPUs when packing jobs onto a node, so enough concurrent
+    # jobs can oversubscribe the node's RAM and trigger the kernel OOM killer,
+    # which kills jobs and can take the whole node (and every job on it) down.
+    # CR_CPU_Memory makes memory a consumable resource the scheduler tracks.
+    # DefMemPerCPU is the default reservation per CPU a job requests, applied
+    # to every job that does not request memory explicitly (currently all of
+    # them). 17600 MB is sized to the largest per-CPU memory footprint job
+    # accounting has recorded (a single-CPU job peaking at 17.6 GB), which
+    # deliberately over-reserves for lighter jobs and caps a 93 GB
+    # c5n.9xlarge at ~5 concurrent jobs; overflow jobs scale out onto
+    # additional nodes rather than oversubscribing one. Tighten this only by
+    # moving to explicit per-job-type memory requests from the submitting
+    # server, informed by accounting data. Both are AWS PCS cluster-level
+    # custom Slurm settings (docs: "Custom Slurm settings for AWS PCS
+    # clusters") and update in place, BUT per the GUARD below a cluster
+    # update drains and replaces compute nodes, so apply only while the
+    # queues are idle.
+    slurm_custom_settings = [
+      {
+        parameter_name  = "SelectTypeParameters"
+        parameter_value = "CR_CPU_Memory"
+      },
+      {
+        parameter_name  = "DefMemPerCPU"
+        parameter_value = "17600"
+      },
+    ]
   }
 
   tags = merge(var.tags, { Name = "${var.name_prefix}-pcs" })

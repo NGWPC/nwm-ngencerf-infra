@@ -94,7 +94,31 @@ after apply for first boot).
   header is not reaching the app, which means it is being lost between the
   edge and the internal ALB.
 
-## 7. Teardown
+## 7. Updating a running environment
+
+To move an environment to new application versions:
+
+1. Edit the version pins in `aws/envs/<env>/main.tf`: `ngencerf_server_image`,
+   `ngencerf_ui_image`, and the `sif_workloads` tags.
+2. `make plan ENV=<env>` then `make apply ENV=<env>`. Changed server/UI pins
+   roll the ECS services with no downtime; changed SIF tags update the
+   sif-sync task definitions only.
+3. `make bootstrap ENV=<env>` to stage the newly pinned SIFs onto EFS (safe to
+   re-run; the static-data sync is idempotent).
+4. If SIF tags changed, restart the API service afterward. The server reads
+   version metadata out of the SIF files once and caches it until it
+   restarts, so without this step the About dialog keeps reporting the
+   previous versions:
+
+   ```bash
+   aws ecs update-service --cluster ngencerf-<env>-cluster \
+     --service ngencerf-<env>-django --force-new-deployment
+   ```
+
+5. Check the About dialog after a hard browser refresh (the About response
+   can also be cached by the browser).
+
+## 8. Teardown
 
 ```bash
 make destroy ENV=ea
@@ -105,7 +129,7 @@ protection. A destroy will be refused until `production` is set to `false` in
 the env's `main.tf` and applied first. This is deliberate: customer-facing
 environments should not be trivially destroyable.
 
-## 8. Troubleshooting quick reference
+## 9. Troubleshooting quick reference
 
 | Symptom | Cause | Fix |
 |---|---|---|
@@ -114,3 +138,4 @@ environments should not be trivially destroyable.
 | Compute jobs pend forever in Slurm | Instance quota too low | Raise the c5n/r8a quotas, jobs then schedule on their own |
 | Gage setup in the app fails to fetch data | EDFS DNS not resolvable from this VPC | Associate the EDFS private hosted zone with this VPC and allow-list its CIDR |
 | ZIP download links return 403 | Data-account bucket policy or task-role grants missing | Apply the per-env S3 grants on the Data side |
+| About dialog shows old versions after a SIF update | Version metadata is cached until the API service restarts | Force a new deployment of the django service (section 7), then hard-refresh the browser |

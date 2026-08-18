@@ -7,7 +7,13 @@ resource "aws_efs_file_system" "main" {
   encrypted        = true
   kms_key_id       = aws_kms_key.main.arn
   performance_mode = "generalPurpose"
-  throughput_mode  = "bursting"
+
+  # Elastic throughput scales automatically with demand (billed per GB
+  # transferred). Bursting mode's credit-based ceiling is tied to stored data
+  # size and is insufficient for the concurrent per-job scratch I/O this
+  # filesystem carries. In-place change; AWS allows one throughput-mode
+  # change per 24 hours.
+  throughput_mode = "elastic"
 
   # Move cold files to Infrequent Access (10x cheaper); restore on first read
   # so re-access doesn't accumulate per-request charges.

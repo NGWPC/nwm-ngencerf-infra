@@ -46,8 +46,8 @@ module "rds" {
   performance_insights_retention_period = var.production ? 7 : 0
   monitoring_interval                   = var.production ? 60 : 0
   # Auto-create the role, but give it a unique name to avoid account-wide collisions
-  create_monitoring_role                = var.production
-  monitoring_role_name                  = "${var.name_prefix}-rds-monitoring"
+  create_monitoring_role = var.production
+  monitoring_role_name   = "${var.name_prefix}-rds-monitoring"
 
   enabled_cloudwatch_logs_exports = ["postgresql", "upgrade"]
 
