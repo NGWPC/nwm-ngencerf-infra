@@ -79,7 +79,8 @@ module "ngencerf" {
   # no manual pin. (An AMI is account-scoped, so each account bakes its own.)
   enable_pcs         = true
   build_compute_ami  = true
-  pcs_compute_ami_id = ""
+   # AMI pinned to avoid unexpected rebuilds on applies
+  pcs_compute_ami_id = "ami-0d6e456bca6321c59"
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
   # Uniform prod sizing; both autoscale from 0 (no idle cost).
@@ -117,7 +118,7 @@ module "ngencerf" {
   # must exist in THIS account's Secrets Manager before the first apply.
   enable_active_directory = true
   ldap_server_uri         = "ldap://nextgenwaterprediction.com"
-  ldap_system_name        = "dev"
+  ldap_system_name        = "oe"
   ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
   ldap_bind_secret_name   = "svc-ldap-ro-testdev"
 

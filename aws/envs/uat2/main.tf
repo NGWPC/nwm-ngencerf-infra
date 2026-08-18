@@ -67,7 +67,7 @@ module "ngencerf" {
   # Customer-facing env: production-safe defaults on (multi-AZ RDS, deletion
   # protection, force_destroy off) and the WAF enforcing (block, not count).
   production      = true
-  waf_rule_action = "block"
+  waf_rule_action = "count"
 
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami
   # runs the Image Builder pipeline (~20-30 min on the FIRST apply) and the compute
@@ -75,7 +75,8 @@ module "ngencerf" {
   # no manual pin. (An AMI is account-scoped, so each account bakes its own.)
   enable_pcs         = true
   build_compute_ami  = true
-  pcs_compute_ami_id = ""
+  # AMI pinned to avoid unexpected rebuilds on applies
+  pcs_compute_ami_id = "ami-0bdddc54459951432"
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
   # Uniform prod sizing; both autoscale from 0 (no idle cost).
