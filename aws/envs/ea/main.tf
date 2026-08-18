@@ -77,9 +77,9 @@ module "ngencerf" {
   # runs the Image Builder pipeline (~20-30 min on the FIRST apply) and the compute
   # node groups read that freshly baked AMI directly, so ONE apply builds and uses it,
   # no manual pin. (An AMI is account-scoped, so each account bakes its own.)
-  enable_pcs         = true
-  build_compute_ami  = true
-   # AMI pinned to avoid unexpected rebuilds on applies
+  enable_pcs        = true
+  build_compute_ami = true
+  # AMI pinned to avoid unexpected rebuilds on applies
   pcs_compute_ami_id = "ami-0d6e456bca6321c59"
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).

@@ -108,6 +108,21 @@ resource "aws_ecs_task_definition" "django" {
           { name = "SLURM_REST_GID", value = "0" },
           { name = "SLURM_REST_JOB_ENVIRONMENT", value = jsonencode(["PATH=/opt/aws/pcs/scheduler/slurm-25.11/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin", "HOME=/root"]) },
 
+          # MPI_NODE_RULES overrides the server default of the same name
+          # (cerfServer/settings.py): ordered [max_catchments, cpus] pairs that
+          # map a run's catchment count to the job's CPU request. The server
+          # recomputes this on every submission and writes the same value into
+          # the model's parallel rank count, so the two always move together.
+          # The single change from the server default is the 251-500 catchment
+          # band at 5 CPUs instead of 6: the cluster reserves DefMemPerCPU
+          # (17600 MB, pcs.tf) per requested CPU, and 6 x 17600 = 105600 MB
+          # exceeds the c5n.9xlarge partition's 93388 MB nodes, so slurmrestd
+          # rejects the submission outright ("Requested node configuration is
+          # not available"), while 5 x 17600 = 88000 MB fits. Remove this
+          # override once the server submits explicit per-job memory requests,
+          # which decouples the CPU count from the per-CPU default reservation.
+          { name = "MPI_NODE_RULES", value = "[[15, 1], [50, 2], [250, 4], [500, 5], [1000, 10], [1500, 12], [-1, 18]]" },
+
           # Host (compute-node) paths the Slurm adapter translates container paths
           # into. Jobs run on a compute node where the EFS root is mounted at
           # /ngencerf-app (pcs.tf launch template). HOST_DATA_ROOT is the
