@@ -75,7 +75,8 @@ module "ngencerf" {
   # no manual pin. (An AMI is account-scoped, so each account bakes its own.)
   enable_pcs         = true
   build_compute_ami  = true
-  pcs_compute_ami_id = ""
+  # AMI pinned to avoid unexpected rebuilds on applies
+  pcs_compute_ami_id = "ami-0bdddc54459951432"
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
   # Uniform prod sizing; both autoscale from 0 (no idle cost).
