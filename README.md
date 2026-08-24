@@ -4,6 +4,8 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 
 ## Architecture
 
+![ngenCERF AWS architecture](docs/architecture.svg)
+
 - Consumes an existing VPC via data sources (LZA-provisioned for the NGWPC envs); it creates no VPC, subnet, IGW, or NAT
 - Private subnets host everything: ECS Fargate tasks (Django API, Nuxt UI), RDS Postgres, ElastiCache Redis, EFS, AWS PCS controller + compute node groups
 - ALB is internal for the NGWPC envs (private subnets only; reach it over the VPC / Transit Gateway path); the module still supports a public ALB (`alb_internal = false`) when the VPC supplies public subnets
@@ -49,6 +51,32 @@ The PCS controller is sized SMALL/MEDIUM/LARGE by the nodes + jobs it tracks, no
 - Python `>= 3.10` and `pre-commit` installed if you'll be developing this repo (`pip install pre-commit`)
 - `tflint` and `checkov` installed for lint targets (`brew install tflint checkov` on macOS)
 
+### AWS SSO login profile (one-time)
+
+CLI access uses IAM Identity Center (SSO): short-lived credentials, no long-term access keys. Define one profile per target account in `~/.aws/config`:
+
+```ini
+[sso-session <org-session-name>]
+sso_start_url = <your-identity-center-start-url>
+sso_region = us-east-1
+sso_registration_scopes = sso:account:access
+
+[profile ngwpc-sandbox]
+sso_session = <org-session-name>
+sso_account_id = <sandbox-account-id>
+sso_role_name = <your-role-in-that-account>
+region = us-east-1
+output = json
+```
+
+`aws configure sso` builds the same thing interactively. Then, whenever you work against the account:
+
+```bash
+aws sso login --profile ngwpc-sandbox   # opens the browser; sessions last ~8h
+export AWS_PROFILE=ngwpc-sandbox
+aws sts get-caller-identity             # confirm the expected account id before any terraform command
+```
+
 ## First run (per-account, one-time)
 
 The Terraform state backend (S3 bucket + customer-managed KMS key) has to exist before any env can use it as a backend. The `aws/bootstrap/` module solves this. **Run it once in any account that needs Terraform to create its own state backend.** The NGWPC Sandbox, Test, and Optimization accounts already have pre-existing infra state buckets (`ngwpc-infra-test` / `ngwpc-infra-oe`); those envs consume that shared infrastructure via different state keys rather than bootstrapping their own. How those buckets were provisioned (LZA vs manual) is unverified.
@@ -60,11 +88,12 @@ See `aws/bootstrap/README.md` for the exact sequence: a 6-step flow that takes ~
 After bootstrap completes, fill in `aws/envs/<env>/backend.hcl` and `aws/envs/<env>/terraform.tfvars` for the env you're spinning up, then:
 
 ```bash
-make init  ENV=sandbox   # terraform init using the env's backend.hcl
-make plan  ENV=sandbox   # see the diff
-make apply ENV=sandbox   # apply changes
-make smoke ENV=sandbox   # end-to-end smoke test (after apply)
-make destroy ENV=sandbox # tear it down (saves cost)
+make init      ENV=sandbox   # terraform init using the env's backend.hcl
+make plan      ENV=sandbox   # see the diff
+make apply     ENV=sandbox   # apply changes
+make bootstrap ENV=sandbox   # stage workload SIFs + ngen static data onto EFS (after apply)
+make smoke     ENV=sandbox   # end-to-end smoke test (after bootstrap)
+make destroy   ENV=sandbox   # tear it down (saves cost)
 ```
 
 ## Day-to-day commands
@@ -232,4 +261,5 @@ When handed this repo:
 2. Run `aws/bootstrap/` in that account (one-time per account)
 3. Fill in `aws/envs/<env>/backend.hcl` and `aws/envs/<env>/terraform.tfvars` for the env you're spinning up
 4. `make init ENV=<env> && make plan ENV=<env> && make apply ENV=<env>`
-5. `make smoke ENV=<env>` to validate
+5. `make bootstrap ENV=<env>` to stage workload SIFs + static data onto EFS
+6. `make smoke ENV=<env>` to validate
