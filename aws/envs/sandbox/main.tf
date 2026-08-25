@@ -87,7 +87,7 @@ module "ngencerf" {
 
   # ngencerf-server and ngencerf-ui Docker images
   ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260824190930Z-development"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260825002337Z-development"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260825024158Z-development"
 
   # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
   # uses its own unique prefix; seed a .keep object in each prefix so it exists
