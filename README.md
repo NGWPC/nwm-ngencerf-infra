@@ -123,7 +123,35 @@ make destroy ENV=sandbox           # destroy sandbox (cost saver)
 make smoke ENV=sandbox             # end-to-end smoke against sandbox
 make fmt                           # terraform fmt -recursive
 make lint                          # tflint + checkov
+
+# Operations & Slurm management
+make ecs-restart ENV=ea            # force new deployment on Django + Nuxt tasks
+make ecs-status ENV=ea             # show task counts, rollout state, task defs
+make slurm-queue ENV=ea            # inspect running/pending Slurm jobs (squeue)
+make slurm-drain ENV=ea            # drain compute partitions before updating SIFs
+make slurm-resume ENV=ea           # resume compute partitions after updates
+make slurm-cancel-all ENV=ea       # cancel active/pending Slurm jobs (scancel)
+make login-ssm ENV=ea              # launch interactive AWS SSM shell on PCS login node
 ```
+
+### Safe SIF Updates & Maintenance Flow
+
+Because Slurm compute jobs mount and execute SIF containers from shared EFS, updating SIFs or static data while jobs are running can disrupt active steps (due to in-flight symlink swaps on `/ngencerf-app/singularity/`). Use this safe workflow:
+
+1. **Check or Drain Active Workloads**:
+   ```bash
+   make slurm-queue ENV=ea          # check for active jobs
+   make slurm-drain ENV=ea          # hold new submissions in PENDING
+   ```
+2. **Stage New SIFs & Static Data**:
+   ```bash
+   make bootstrap ENV=ea            # stages new SIFs onto EFS (guards against active jobs)
+   ```
+3. **Restart ECS Tasks & Resume Partitions**:
+   ```bash
+   make ecs-restart ENV=ea          # refresh Django/Nuxt containers and EFS file handles
+   make slurm-resume ENV=ea         # release partitions to schedule queued jobs
+   ```
 
 ## Dev deploy (ad-hoc container update, no Terraform)
 

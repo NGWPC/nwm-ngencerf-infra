@@ -195,6 +195,38 @@ if [ "${STAGE}" = "all" ] || [ "${STAGE}" = "sifs" ]; then
     exit 1
   fi
 
+  # Guard: check if active Slurm jobs are running before swapping SIFs
+  iid_check=$(aws ec2 describe-instances --region "${REGION}" \
+    --filters "Name=tag:Name,Values=${PREFIX}-pcs-node" "Name=instance-type,Values=c6i.large" \
+    "Name=instance-state-name,Values=running" \
+    --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || true)
+  if [ -n "${iid_check}" ] && [ "${iid_check}" != "None" ]; then
+    cmd_id=$(aws ssm send-command --region "${REGION}" --instance-ids "${iid_check}" \
+      --document-name AWS-RunShellScript \
+      --parameters 'commands=["squeue -h | wc -l"]' \
+      --query 'Command.CommandId' --output text 2>/dev/null || true)
+    if [ -n "${cmd_id}" ] && [ "${cmd_id}" != "None" ]; then
+      for _ in $(seq 1 10); do
+        status=$(aws ssm get-command-invocation --region "${REGION}" --command-id "${cmd_id}" --instance-id "${iid_check}" --query 'Status' --output text 2>/dev/null || echo "Pending")
+        case "${status}" in
+          Success | Failed | Cancelled | TimedOut) break ;;
+          *) sleep 1 ;;
+        esac
+      done
+      running_jobs=$(aws ssm get-command-invocation --region "${REGION}" --command-id "${cmd_id}" --instance-id "${iid_check}" --query 'StandardOutputContent' --output text 2>/dev/null | tr -d '[:space:]' || echo "0")
+      if [ "${running_jobs:-0}" -gt 0 ]; then
+        echo "WARNING: ${running_jobs} active/queued Slurm job(s) detected on ${PREFIX}!" >&2
+        echo "  Staging new SIFs now may break running jobs (symlink swap on shared EFS)." >&2
+        echo "  Use 'make slurm-queue ENV=${ENV}' to view, or 'make slurm-drain ENV=${ENV}' before updating." >&2
+        if [ "${FORCE_SIF_SYNC:-0}" != "1" ]; then
+          echo "  Set FORCE_SIF_SYNC=1 to proceed anyway. Aborting SIF staging." >&2
+          exit 1
+        fi
+        echo "  Proceeding with SIF staging due to FORCE_SIF_SYNC=1."
+      fi
+    fi
+  fi
+
   for name in ${names}; do
     taskdef=$(echo "${taskdefs}" | jq -r --arg n "${name}" '.[$n]')
     run_task "SIF ${name}" "${taskdef}" "${sg}" "sif-sync" || overall=1
