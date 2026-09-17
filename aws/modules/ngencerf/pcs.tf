@@ -22,12 +22,12 @@
 # bakes the PCS/Slurm agent, so a minimal cluster needs no user_data.
 
 data "aws_ssm_parameter" "pcs_ami" {
-  count = var.enable_pcs ? 1 : 0
+  count = var.enable_pcs && (local.pcs_compute_override_ami_id == "" || var.pcs_login_ami_id == "") ? 1 : 0
   name  = "/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id"
 }
 
-# AMI for the two COMPUTE node groups (the login node always uses the sample AMI
-# below, it runs no .sif workloads). Resolution order: an explicit pin wins;
+# AMI for the two COMPUTE node groups (the login node uses var.pcs_login_ami_id,
+# falling back to the sample AMI below; it runs no .sif workloads). Resolution order: an explicit pin wins;
 # else the AMI just baked in-account by Image Builder (build_compute_ami), read
 # straight from the resource so ONE apply builds AND uses it (no manual "read the
 # output, pin it, re-apply" step); else "" so the node group falls back to the
@@ -38,10 +38,16 @@ locals {
     var.build_compute_ami ? one(aws_imagebuilder_image.pcs_compute[0].output_resources[0].amis[*].image) : ""
   )
 
-  # The LZA-managed Session Manager logging policy, present in every NGWPC LZA
-  # account. Attached to compute instance profiles (PCS nodes + the Image Builder
-  # build instance) so SSM sessions log centrally, per the Sandbox rules of the road.
-  session_manager_logging_policy_arn = "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/AWSAccelerator-SessionManagerLogging"
+  # Session Manager logging policy attached to compute instance profiles (PCS nodes
+  # + Image Builder build instance) so SSM sessions log centrally. Resolves to explicit
+  # policy ARN if given, or the account-scoped policy name (e.g. AWSAccelerator-SessionManagerLogging
+  # in LZA accounts). Empty string disables the attachment for non-LZA environments.
+  session_manager_logging_policy_arn = var.session_manager_logging_policy_arn != "" ? var.session_manager_logging_policy_arn : (
+    var.session_manager_logging_policy_name != "" ? "arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/${var.session_manager_logging_policy_name}" : ""
+  )
+
+  # Resolved AWS PCS sample AMI ID if queried from SSM, or empty string when overridden.
+  pcs_sample_ami_id = length(data.aws_ssm_parameter.pcs_ami) > 0 ? nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value) : ""
 }
 
 # --- PCS node IAM -------------------------------------------------------
@@ -95,43 +101,51 @@ resource "aws_iam_role_policy_attachment" "pcs_node_cloudwatch" {
   policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
 }
 
-# Sandbox rules of the road require the LZA-managed Session Manager logging
-# policy on every compute instance profile so SSM sessions are logged to the
-# central destination. Always attached when PCS is enabled (no opt-out); the
-# ARN is the account-scoped session_manager_logging_policy_arn local above, so
-# it resolves to this account's AWSAccelerator-SessionManagerLogging policy.
-# Assumes an LZA-governed account, which every NGWPC env this module targets is.
+# Session Manager logging policy on compute instance profile so SSM sessions are logged to the
+# central destination. Attached when PCS is enabled and policy ARN is resolved (default LZA
+# policy AWSAccelerator-SessionManagerLogging; omitted if session_manager_logging_policy_name is "").
 resource "aws_iam_role_policy_attachment" "pcs_node_session_logging" {
-  count      = var.enable_pcs ? 1 : 0
+  count      = var.enable_pcs && local.session_manager_logging_policy_arn != "" ? 1 : 0
   role       = aws_iam_role.pcs_node[0].name
   policy_arn = local.session_manager_logging_policy_arn
 }
 
-# Cross-account read on the Data-account ngwpc-dev bucket so the login node can
+# Cross-account read on the static data bucket so the login node can
 # sync the ngen static-input tree onto EFS at bootstrap (make bootstrap /
 # make load-static run the load over SSM on the login node, which shares this
 # node role). The Data side must also grant this role (bucket policy / assumable
-# role) for the read to succeed. AC-6: read-only, scoped to the static prefixes.
+# role) for the read to succeed. AC-6: read-only, scoped to the static prefix.
 data "aws_iam_policy_document" "pcs_node_static_data_s3" {
-  count = var.enable_pcs ? 1 : 0
+  count = var.enable_pcs && local.s3_parsed.static != null ? 1 : 0
+
   statement {
     effect    = "Allow"
     actions   = ["s3:ListBucket"]
-    resources = ["arn:aws:s3:::ngwpc-dev"]
+    resources = ["arn:aws:s3:::${local.s3_parsed.static.bucket}"]
   }
+
   statement {
-    effect  = "Allow"
-    actions = ["s3:GetObject"]
-    resources = [
-      "arn:aws:s3:::ngwpc-dev/nwm-tools-data/esmf/*",
-      "arn:aws:s3:::ngwpc-dev/nwm-tools-data/nwm_retrospective/*",
-    ]
+    effect    = "Allow"
+    actions   = ["s3:GetObject"]
+    resources = ["arn:aws:s3:::${local.s3_parsed.static.bucket}/${local.s3_parsed.static.prefix}*"]
+  }
+
+  dynamic "statement" {
+    for_each = var.data_s3_kms_key_arn != "" ? [1] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "kms:Decrypt",
+        "kms:DescribeKey",
+      ]
+      resources = [var.data_s3_kms_key_arn]
+    }
   }
 }
 
 resource "aws_iam_role_policy" "pcs_node_static_data_s3" {
-  count  = var.enable_pcs ? 1 : 0
-  name   = "ngwpc-dev-static-read"
+  count  = var.enable_pcs && local.s3_parsed.static != null ? 1 : 0
+  name   = "static-data-s3-read"
   role   = aws_iam_role.pcs_node[0].name
   policy = data.aws_iam_policy_document.pcs_node_static_data_s3[0].json
 }
@@ -400,7 +414,7 @@ resource "awscc_pcs_compute_node_group" "compute_default" {
   count      = var.enable_pcs ? 1 : 0
   name       = "compute-default"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : local.pcs_sample_ami_id
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id
@@ -433,7 +447,7 @@ resource "awscc_pcs_compute_node_group" "compute_heavy" {
   count      = var.enable_pcs ? 1 : 0
   name       = "compute-heavy"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = local.pcs_compute_override_ami_id != "" ? local.pcs_compute_override_ami_id : local.pcs_sample_ami_id
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id
@@ -476,7 +490,7 @@ resource "awscc_pcs_compute_node_group" "login" {
   count      = var.enable_pcs ? 1 : 0
   name       = "login"
   cluster_id = awscc_pcs_cluster.main[0].cluster_id
-  ami_id     = nonsensitive(data.aws_ssm_parameter.pcs_ami[0].value)
+  ami_id     = var.pcs_login_ami_id != "" ? var.pcs_login_ami_id : local.pcs_sample_ami_id
 
   custom_launch_template = {
     template_id = aws_launch_template.pcs[0].id

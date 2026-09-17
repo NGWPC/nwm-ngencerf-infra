@@ -23,11 +23,8 @@
 # Requires: AWS credentials for the target account, the env already
 # `terraform apply`-ed, and jq.
 
-set -euo pipefail
-
 ENV="${1:?usage: bootstrap.sh <env> [all|sifs|static]  (e.g. sandbox)}"
 STAGE="${2:-all}"
-REGION="us-east-1"
 DIR="aws/envs/${ENV}"
 PREFIX="ngencerf-$(echo "${ENV}" | tr '/' '-')"
 
@@ -44,6 +41,8 @@ if [ ! -d "${DIR}" ]; then
   exit 1
 fi
 cd "${DIR}"
+
+REGION="$(terraform output -raw aws_region 2>/dev/null || echo "${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}")"
 
 cluster=$(terraform output -raw ecs_cluster_name 2>/dev/null || true)
 subnets=$(terraform output -json private_subnet_ids 2>/dev/null | jq -r 'join(",")' || true)
@@ -111,35 +110,39 @@ run_static_login() {
   fi
   echo "  login node: ${iid}"
 
-  # The load script, run on the login node as root. Pinned to development for now
-  # (tighten to a tag/commit when the static config is versioned).
+  # The load script, run on the login node as root.
+  static_data_s3_path=$(terraform output -raw static_data_s3_path 2>/dev/null || echo "s3://ngwpc-dev/nwm-tools-data/")
+  static_data_s3_path="${static_data_s3_path%/}/"
+  git_branch="${NGEN_STATIC_GIT_BRANCH:-development}"
+  git_org_url="${NGEN_STATIC_GIT_ORG_URL:-https://github.com/NGWPC}"
+
   script=$(
-    cat <<'EOS'
+    cat <<EOS
 set -eu
 STATIC=/ngencerf-app/data/ngen-cal-data/ngen-static-files
-mkdir -p "$STATIC"
-echo "Syncing nwm_retrospective + esmf from ngwpc-dev (nwm-tools-data)..."
-aws s3 sync s3://ngwpc-dev/nwm-tools-data/nwm_retrospective "$STATIC/nwm_retrospective" --no-progress
-aws s3 sync s3://ngwpc-dev/nwm-tools-data/esmf "$STATIC/forcing_static_dir" --no-progress
+mkdir -p "\$STATIC"
+echo "Syncing nwm_retrospective + esmf from ${static_data_s3_path}..."
+aws s3 sync "${static_data_s3_path}nwm_retrospective" "\$STATIC/nwm_retrospective" --no-progress
+aws s3 sync "${static_data_s3_path}esmf" "\$STATIC/forcing_static_dir" --no-progress
 echo "Cloning module_parameter_files (nwm-msw-mgr)..."
-cd "$STATIC" && rm -rf module_parameter_files tmp-msw
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-msw-mgr.git tmp-msw
+cd "\$STATIC" && rm -rf module_parameter_files tmp-msw
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/nwm-msw-mgr.git tmp-msw
 ( cd tmp-msw && git sparse-checkout set src/mswm/module_parameter_files )
-mv tmp-msw/src/mswm/module_parameter_files "$STATIC/" && rm -rf tmp-msw
+mv tmp-msw/src/mswm/module_parameter_files "\$STATIC/" && rm -rf tmp-msw
 echo "Cloning bmi_forcing_templates (ngen-forcing)..."
-cd "$STATIC" && rm -rf bmi_forcing_templates tmp-forcing
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/ngen-forcing.git tmp-forcing
+cd "\$STATIC" && rm -rf bmi_forcing_templates tmp-forcing
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/ngen-forcing.git tmp-forcing
 ( cd tmp-forcing && git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates )
-mv tmp-forcing/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates "$STATIC/bmi_forcing_templates" && rm -rf tmp-forcing
+mv tmp-forcing/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates "\$STATIC/bmi_forcing_templates" && rm -rf tmp-forcing
 echo "Cloning verification_data parquet inputs (nwm-eval-mgr)..."
-cd "$STATIC" && rm -rf verification_data tmp-nwm-eval-mgr
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-eval-mgr.git tmp-nwm-eval-mgr
+cd "\$STATIC" && rm -rf verification_data tmp-nwm-eval-mgr
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/nwm-eval-mgr.git tmp-nwm-eval-mgr
 ( cd tmp-nwm-eval-mgr && git sparse-checkout set data/inputs/gage_files )
-mkdir -p "$STATIC/verification_data"
-find tmp-nwm-eval-mgr/data/inputs/gage_files -type f -name '*.parquet' -exec cp {} "$STATIC/verification_data/" \;
+mkdir -p "\$STATIC/verification_data"
+find tmp-nwm-eval-mgr/data/inputs/gage_files -type f -name '*.parquet' -exec cp {} "\$STATIC/verification_data/" \;
 rm -rf tmp-nwm-eval-mgr
 echo "Static data staged. Top level:"
-ls -la "$STATIC"
+ls -la "\$STATIC"
 EOS
   )
   # base64 so the multi-line script survives SSM parameter quoting.

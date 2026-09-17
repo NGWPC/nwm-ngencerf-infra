@@ -16,6 +16,12 @@ variable "build_compute_ami" {
   default     = false
 }
 
+variable "data_s3_kms_key_arn" {
+  type        = string
+  description = "KMS CMK ARN in the Data account used to encrypt shared buckets (archive, zips, static data). When set, grants kms:Decrypt, kms:GenerateDataKey, and kms:DescribeKey to the Django task role, and kms:Decrypt and kms:DescribeKey to the PCS node role. Default empty leaves cross-account KMS permissions unmanaged (e.g. if buckets use SSE-S3 or permissions are granted on the key policy)."
+  default     = ""
+}
+
 variable "db_ingress_cidrs" {
   type        = list(string)
   description = "Extra CIDR blocks allowed to reach RDS Postgres (port 5432) on top of the application web tier. For direct developer/operator database access (e.g. the team's Amazon WorkSpaces) in non-prod envs. Empty by default so prod-tier envs expose the database only to the app."
@@ -69,6 +75,18 @@ variable "enterprise_data_url" {
   default     = "http://edfs.test.nextgenwaterprediction.com/"
 }
 
+variable "forcing_s3_path" {
+  type        = string
+  description = "Optional S3 URI prefix (with trailing slash) for observational forcing data (SNODAS / SMAP / SNOTEL), e.g. s3://ngwpc-forcing/. Default empty: ngen-forcing observation reads migrated to static_data_s3_path, so leaving this empty grants no bucket access."
+  default     = ""
+}
+
+variable "imagebuilder_parent_image" {
+  type        = string
+  description = "Optional parent image (AMI ID, Image Builder image ARN, or SSM parameter ARN) for the EC2 Image Builder compute-node recipe. When empty, defaults to the Canonical Ubuntu 24.04 LTS SSM parameter (/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id). Default empty."
+  default     = ""
+}
+
 variable "ldap_bind_dn" {
   type        = string
   description = "LDAP bind identity: the read-only service account the server authenticates AS to look up users, as a userPrincipalName (\"svc-ldap-ro@example.com\") or a full DN. Only used when enable_active_directory = true."
@@ -81,6 +99,12 @@ variable "ldap_bind_secret_name" {
   default     = ""
 }
 
+variable "ldap_domain" {
+  type        = string
+  description = "Active Directory domain name (e.g. \"nextgenwaterprediction.com\"). Passed as LDAP_DOMAIN to the Django task when enable_active_directory = true. Default empty falls back to the container default."
+  default     = ""
+}
+
 variable "ldap_server_uri" {
   type        = string
   description = "LDAP server URI the Django task binds to, e.g. \"ldap://ad.example.com\" (plain, port 389) or \"ldaps://ad.example.com\" (TLS, port 636). Only used when enable_active_directory = true."
@@ -90,6 +114,12 @@ variable "ldap_server_uri" {
 variable "ldap_system_name" {
   type        = string
   description = "Token selecting the AD authorization groups: the server admits members of ngencerf-<name>-users and grants staff to ngencerf-<name>-admins (LDAP_SYSTEM_NAME in settings.py). Only used when enable_active_directory = true."
+  default     = ""
+}
+
+variable "ldap_user_search_base_dn" {
+  type        = string
+  description = "Active Directory user search base DN (e.g. \"DC=nextgenwaterprediction,DC=com\"). Passed as LDAP_USER_SEARCH_BASE_DN to the Django task when enable_active_directory = true. Default empty falls back to the container default."
   default     = ""
 }
 
@@ -140,9 +170,15 @@ variable "nuxt_memory" {
   default     = "4096"
 }
 
+variable "oras_image" {
+  type        = string
+  description = "Container image URL for the ORAS CLI used by the sif-sync bootstrap task to pull OCI .sif artifacts onto EFS. Override per env for internal registry mirrors (e.g. ECR) in air-gapped or restricted accounts."
+  default     = "ghcr.io/oras-project/oras:v1.3.2"
+}
+
 variable "pcs_compute_ami_id" {
   type        = string
-  description = "Optional explicit AMI-ID pin for the two compute node groups (e.g. a specific external/golden AMI). When non-empty it wins; when empty the node groups use the in-account Image Builder AMI if build_compute_ami = true, else the PCS sample AMI. The login node always uses the sample AMI. Default empty."
+  description = "Optional explicit AMI-ID pin for the two compute node groups (e.g. a specific external/golden AMI). When non-empty it wins; when empty the node groups use the in-account Image Builder AMI if build_compute_ami = true, else the PCS sample AMI. The login node uses pcs_login_ami_id (or falls back to the sample AMI). Default empty."
   default     = ""
 }
 
@@ -167,6 +203,12 @@ variable "pcs_controller_size" {
     condition     = contains(["SMALL", "MEDIUM", "LARGE"], var.pcs_controller_size)
     error_message = "pcs_controller_size must be SMALL, MEDIUM, or LARGE."
   }
+}
+
+variable "pcs_login_ami_id" {
+  type        = string
+  description = "Optional explicit AMI-ID pin for the PCS login node group. When empty, defaults to the AWS PCS DLAMI sample AMI SSM parameter (/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id). Default empty."
+  default     = ""
 }
 
 variable "pcs_max_nodes_per_partition" {
@@ -215,10 +257,34 @@ variable "redis_node_type" {
   default     = "cache.r7g.large"
 }
 
+variable "session_manager_logging_policy_arn" {
+  type        = string
+  description = "Optional explicit IAM policy ARN for Session Manager logging attached to compute and Image Builder instance profiles. When non-empty, overrides session_manager_logging_policy_name. Default empty."
+  default     = ""
+}
+
+variable "session_manager_logging_policy_name" {
+  type        = string
+  description = "Name of the account-scoped Session Manager logging policy attached to compute and Image Builder instance profiles. Present in every NGWPC LZA account as AWSAccelerator-SessionManagerLogging. Set to empty string to omit attaching a custom session logging policy (e.g. in non-LZA accounts)."
+  default     = "AWSAccelerator-SessionManagerLogging"
+}
+
+variable "sif_registry_base" {
+  type        = string
+  description = "Container registry / repository namespace for workload SIF artifacts. The sif-sync bootstrap task pulls <sif_registry_base>/<name>-sif:<tag>. Override per env to point at an ECR mirror or alternate registry post-handoff."
+  default     = "ghcr.io/ngwpc"
+}
+
 variable "sif_workloads" {
   type        = map(string)
   description = "Workload SIFs to stage onto EFS for AWS PCS jobs: map of workload name -> OCI artifact tag. For each entry the sif-sync bootstrap task (sif_sync.tf) pulls ghcr.io/ngwpc/<name>-sif:<tag> onto EFS /singularity, writes <name>-<tag>.sif, and repoints the stable <name>.sif symlink. Names follow the workload images, e.g. \"nwm-cal-mgr\", \"nwm-fcst-mgr\", \"nwm-eval-mgr\". Only used when enable_pcs = true; staged via `make bootstrap`. Default empty (no SIFs staged)."
   default     = {}
+}
+
+variable "static_data_s3_path" {
+  type        = string
+  description = "S3 URI prefix (with trailing slash) for static NGen model inputs (retrospective, ESMF), e.g. s3://ngwpc-dev/nwm-tools-data/. Consumed by the PCS node IAM policy and bootstrap static-data staging."
+  default     = "s3://ngwpc-dev/nwm-tools-data/"
 }
 
 variable "tags" {

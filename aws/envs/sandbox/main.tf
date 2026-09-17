@@ -76,9 +76,11 @@ module "ngencerf" {
   # Leave build_compute_ami = true to keep the custom AMI; it only re-bakes when the
   # image recipe version changes, not on every apply. pcs_compute_ami_id stays empty
   # unless you want to force a specific external AMI.
-  enable_pcs         = true
-  build_compute_ami  = true
-  pcs_compute_ami_id = ""
+  enable_pcs                = true
+  build_compute_ami         = true
+  pcs_compute_ami_id        = ""
+  pcs_login_ami_id          = "" # Empty defaults to AWS PCS DLAMI sample AMI
+  imagebuilder_parent_image = "" # Empty defaults to Canonical Ubuntu 24.04 SSM parameter
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
   # Uniform prod sizing; both autoscale from 0 (no idle cost).
@@ -89,11 +91,13 @@ module "ngencerf" {
   ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260826004245z-development"
   ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260826003852z-development"
 
-  # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
-  # uses its own unique prefix; seed a .keep object in each prefix so it exists
+  # S3 archive + zip storage prefixes (shared Data-account buckets) and static data.
+  # Each env uses its own unique prefix; seed a .keep object in each prefix so it exists
   # before the first archive or zip is written.
   ngencerf_archive_s3_path = "s3://ngwpc-ngencerf-archive/sandbox/"
   ngencerf_zips_s3_path    = "s3://ngwpc-ngencerf-zips/sandbox/"
+  static_data_s3_path      = "s3://ngwpc-dev/nwm-tools-data/"
+  data_s3_kms_key_arn      = "" # Set to Data-account CMK ARN if cross-account buckets are CMK-encrypted
 
   # EDFS (NOAA Enterprise Data Services): Sandbox uses the Test data services.
   # Required by save_gage_tab (unset -> ValueError "Invalid environment: 'None'").
@@ -111,17 +115,23 @@ module "ngencerf" {
   # the AD DNS name (Kevin added a Route 53 record resolving it inside
   # SBOX-Compute), not a pinned DC IP, so AD can fail over across controllers;
   # plain LDAP on 389.
-  enable_active_directory = true
-  ldap_server_uri         = "ldap://nextgenwaterprediction.com"
-  ldap_system_name        = "dev"
-  ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
-  ldap_bind_secret_name   = "svc-ldap-ro-testdev"
+  enable_active_directory  = true
+  ldap_server_uri          = "ldap://nextgenwaterprediction.com"
+  ldap_system_name         = "dev"
+  ldap_bind_dn             = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
+  ldap_bind_secret_name    = "svc-ldap-ro-testdev"
+  ldap_domain              = "nextgenwaterprediction.com"
+  ldap_user_search_base_dn = "DC=nextgenwaterprediction,DC=com"
 
   # Mandatory MFA layered on top of the AD password check. Applies to every
   # user, AD-backed included: each one enrolls an authenticator app on next login
   # and gets recovery codes. Enrollment lives in the database, so destroying this
   # env wipes it and everyone re-enrolls on the next bring-up.
   enable_mfa = true
+
+  # SIF container registry base and ORAS CLI image for staging
+  sif_registry_base = "ghcr.io/ngwpc"
+  oras_image        = "ghcr.io/oras-project/oras:v1.3.2"
 
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   sif_workloads = {

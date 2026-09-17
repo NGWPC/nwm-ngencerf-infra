@@ -8,6 +8,11 @@ output "alb_dns_name" {
   description = "DNS name of the ALB (public when internet-facing; internal/private when alb_internal = true). curl it: http://<this-value>/"
 }
 
+output "aws_region" {
+  value       = data.aws_region.current.name
+  description = "AWS region where this module is deployed."
+}
+
 output "compute_ami_id" {
   value       = var.build_compute_ami ? one(aws_imagebuilder_image.pcs_compute[0].output_resources[0].amis[*].image) : null
   description = "AMI ID of the custom PCS compute-node image once built (build_compute_ami = true), else null. Informational: the compute node groups already consume this AMI directly; no manual pin needed."
@@ -18,6 +23,11 @@ output "ecs_cluster_name" {
   description = "ECS cluster name. Used by bootstrap.sh to run the one-off sif-sync task."
 }
 
+output "login_ami_id" {
+  value       = var.enable_pcs ? (var.pcs_login_ami_id != "" ? var.pcs_login_ami_id : local.pcs_sample_ami_id) : null
+  description = "AMI ID of the PCS login node group (enable_pcs only), else null."
+}
+
 output "sif_sync_security_group_id" {
   value       = var.enable_pcs ? aws_security_group.sif_sync[0].id : null
   description = "Security group for the sif-sync bootstrap task (enable_pcs only). Used by bootstrap.sh."
@@ -26,4 +36,9 @@ output "sif_sync_security_group_id" {
 output "sif_sync_task_definitions" {
   value       = { for k, td in aws_ecs_task_definition.sif_sync : k => td.family }
   description = "Map of workload name -> sif-sync task definition family (empty unless enable_pcs and sif_workloads set). bootstrap.sh runs each to stage that workload's SIF onto EFS."
+}
+
+output "static_data_s3_path" {
+  value       = var.static_data_s3_path
+  description = "S3 URI prefix where static NGen model inputs are stored. Consumed by bootstrap.sh."
 }
