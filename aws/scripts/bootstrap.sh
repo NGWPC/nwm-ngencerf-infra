@@ -201,9 +201,21 @@ if [ "${STAGE}" = "all" ] || [ "${STAGE}" = "sifs" ]; then
     "Name=instance-state-name,Values=running" \
     --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || true)
   if [ -n "${iid_check}" ] && [ "${iid_check}" != "None" ]; then
+    check_cmd=$(cat <<'EOF'
+slurm_dir=""
+for v in /opt/aws/pcs/scheduler/slurm-25.11 /opt/aws/pcs/scheduler/slurm; do
+  [ -d "$v" ] && { slurm_dir="$v"; break; }
+done
+[ -z "$slurm_dir" ] && slurm_dir=$(find /opt/aws/pcs/scheduler -maxdepth 1 -type d -name 'slurm-*' 2>/dev/null | sort -V | tail -n1)
+[ -n "$slurm_dir" ] && PATH="$slurm_dir/bin:$PATH"
+export PATH
+squeue -h 2>/dev/null | wc -l
+EOF
+)
+    b64_check=$(printf '%s' "${check_cmd}" | base64 | tr -d '\n')
     cmd_id=$(aws ssm send-command --region "${REGION}" --instance-ids "${iid_check}" \
       --document-name AWS-RunShellScript \
-      --parameters 'commands=["squeue -h | wc -l"]' \
+      --parameters "commands=[\"echo ${b64_check} | base64 -d | bash\"]" \
       --query 'Command.CommandId' --output text 2>/dev/null || true)
     if [ -n "${cmd_id}" ] && [ "${cmd_id}" != "None" ]; then
       for _ in $(seq 1 10); do

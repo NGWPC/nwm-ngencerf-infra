@@ -45,12 +45,41 @@ get_login_node() {
 
 run_login_command() {
   local cmd="$1"
-  local iid b64 cmd_id status
+  local iid full_cmd b64 cmd_id status
 
   iid=$(get_login_node) || return 1
 
+  # Wrap command with Slurm environment & PATH setup.
+  # SSM Run Command runs as root in a non-login subshell, so /etc/profile.d is not sourced
+  # and Slurm binaries are not in PATH by default. Explicitly select slurm-25.11 matching pcs.tf.
+  full_cmd=$(cat <<'EOF'
+set -e
+[ -f /etc/profile ] && . /etc/profile || true
+
+slurm_dir=""
+for v in /opt/aws/pcs/scheduler/slurm-25.11 /opt/aws/pcs/scheduler/slurm; do
+  if [ -d "$v" ]; then
+    slurm_dir="$v"
+    break
+  fi
+done
+if [ -z "$slurm_dir" ]; then
+  slurm_dir=$(find /opt/aws/pcs/scheduler -maxdepth 1 -type d -name 'slurm-*' 2>/dev/null | sort -V | tail -n1)
+fi
+
+if [ -n "$slurm_dir" ]; then
+  [ -d "$slurm_dir/bin" ] && PATH="$slurm_dir/bin:$PATH"
+  [ -d "$slurm_dir/sbin" ] && PATH="$slurm_dir/sbin:$PATH"
+fi
+[ -d /opt/aws/pcs/bin ] && PATH="/opt/aws/pcs/bin:$PATH"
+export PATH
+EOF
+)
+  full_cmd="${full_cmd}
+${cmd}"
+
   # base64 encode command to avoid shell escaping issues over SSM
-  b64=$(printf '%s' "${cmd}" | base64 | tr -d '\n')
+  b64=$(printf '%s' "${full_cmd}" | base64 | tr -d '\n')
 
   cmd_id=$(aws ssm send-command --region "${REGION}" --instance-ids "${iid}" \
     --document-name AWS-RunShellScript \
@@ -130,19 +159,20 @@ case "${ACTION}" in
 
   slurm-drain)
     echo "=== Draining Slurm partitions for maintenance (${ENV}) ==="
-    run_login_command 'sudo scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=DRAIN Reason="Maintenance/SIF update"; echo ""; sinfo'
+    run_login_command 'scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=DRAIN Reason="Maintenance/SIF update"; echo ""; sinfo'
     echo "Partitions drained. New job submissions will remain in PENDING state."
     ;;
 
   slurm-resume)
     echo "=== Resuming Slurm partitions (${ENV}) ==="
-    run_login_command 'sudo scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=RESUME; echo ""; sinfo'
+    run_login_command 'scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=RESUME; echo ""; sinfo'
     echo "Partitions resumed and ready to schedule jobs."
     ;;
 
   login-ssm)
     login_iid=$(get_login_node)
     echo "=== Opening SSM Session to PCS Login Node: ${login_iid} (${ENV}) ==="
+    echo "Tip: Run 'sudo -i' once connected to load the Slurm environment (/opt/aws/pcs/scheduler/slurm-25.11/bin)."
     exec aws ssm start-session --region "${REGION}" --target "${login_iid}"
     ;;
 
