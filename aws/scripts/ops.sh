@@ -114,7 +114,8 @@ ${cmd}"
 
 case "${ACTION}" in
   ecs-restart)
-    svc_target="${3:-all}"
+    svc_target="$(echo "${3:-all}" | xargs)"
+    [ -z "${svc_target}" ] && svc_target="all"
     echo "=== Forcing new deployment on ECS cluster: ${PREFIX}-cluster (${ENV}) ==="
     case "${svc_target}" in
       all)
@@ -154,18 +155,29 @@ case "${ACTION}" in
 
   slurm-cancel-all)
     echo "=== Cancelling active and pending Slurm jobs for ${ENV} ==="
-    run_login_command 'scancel --state=RUNNING,PENDING -v || true; echo ""; squeue'
+    run_login_command '
+      jobs=$(squeue -h -o "%i")
+      if [ -n "$jobs" ]; then
+        echo "Cancelling jobs: $jobs"
+        scancel $jobs || true
+        sleep 2
+      else
+        echo "No active or pending jobs found."
+      fi
+      echo ""
+      squeue
+    '
     ;;
 
   slurm-drain)
     echo "=== Draining Slurm partitions for maintenance (${ENV}) ==="
-    run_login_command 'scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=DRAIN Reason="Maintenance/SIF update"; echo ""; sinfo'
+    run_login_command 'for p in $(sinfo -h -o "%P" | tr -d "*"); do scontrol update PartitionName="$p" State=DRAIN; done; echo ""; sinfo'
     echo "Partitions drained. New job submissions will remain in PENDING state."
     ;;
 
   slurm-resume)
     echo "=== Resuming Slurm partitions (${ENV}) ==="
-    run_login_command 'scontrol update PartitionName=c5n-9xlarge,r8a-12xlarge State=RESUME; echo ""; sinfo'
+    run_login_command 'for p in $(sinfo -h -o "%P" | tr -d "*"); do scontrol update PartitionName="$p" State=UP; done; echo ""; sinfo'
     echo "Partitions resumed and ready to schedule jobs."
     ;;
 
