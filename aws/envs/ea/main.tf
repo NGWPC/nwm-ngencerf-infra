@@ -80,7 +80,9 @@ module "ngencerf" {
   enable_pcs        = true
   build_compute_ami = true
   # AMI pinned to avoid unexpected rebuilds on applies
-  pcs_compute_ami_id = "ami-0d6e456bca6321c59"
+  pcs_compute_ami_id        = "ami-0d6e456bca6321c59"
+  pcs_login_ami_id          = "" # Empty defaults to AWS PCS DLAMI sample AMI
+  imagebuilder_parent_image = "" # Empty defaults to Canonical Ubuntu 24.04 SSM parameter
 
   # Instance types backing the two Slurm partitions (c5n-9xlarge / r8a-12xlarge).
   # Uniform prod sizing; both autoscale from 0 (no idle cost).
@@ -89,8 +91,8 @@ module "ngencerf" {
 
   # ngencerf-server and ngencerf-ui Docker images. Public-facing envs pin
   # immutable tags (release or timestamped), never a mutable alias like latest.
-  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260909192754Z-development"
-  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260909163307Z-development"
+  ngencerf_server_image = "ghcr.io/ngwpc/ngencerf-server:20260916215411Z-development"
+  ngencerf_ui_image     = "ghcr.io/ngwpc/ngencerf-ui:20260916213824Z-development"
 
   # The public origin users reach this env at. Sets the Django CSRF trusted
   # origin + X-Forwarded-Proto trust and points the UI's browser-facing API
@@ -98,11 +100,13 @@ module "ngencerf" {
   public_url    = "https://ngencerf-ea.nextgenwaterprediction.com"
   allowed_hosts = ["ngencerf-ea.nextgenwaterprediction.com"]
 
-  # S3 archive + zip storage prefixes (shared Data-account buckets). Each env
-  # uses its own unique prefix; seed a .keep object in each prefix so it exists
+  # S3 archive + zip storage prefixes (shared Data-account buckets) and static data.
+  # Each env uses its own unique prefix; seed a .keep object in each prefix so it exists
   # before the first archive or zip is written.
   ngencerf_archive_s3_path = "s3://ngwpc-ngencerf-archive/ea/"
   ngencerf_zips_s3_path    = "s3://ngwpc-ngencerf-zips/ea/"
+  static_data_s3_path      = "s3://ngwpc-dev/nwm-tools-data/"
+  data_s3_kms_key_arn      = "" # Set to Data-account CMK ARN if cross-account buckets are CMK-encrypted
 
   # EDFS (NOAA Enterprise Data Services): this env lives in the Test account,
   # so it uses the Test data services. Required by save_gage_tab. The host must
@@ -116,22 +120,28 @@ module "ngencerf" {
   # group set + the svc-ldap-ro-testdev read-only bind account) until the
   # EA-specific group naming and bind secret are confirmed; the bind secret
   # must exist in THIS account's Secrets Manager before the first apply.
-  enable_active_directory = true
-  ldap_server_uri         = "ldap://nextgenwaterprediction.com"
-  ldap_system_name        = "oe"
-  ldap_bind_dn            = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
-  ldap_bind_secret_name   = "svc-ldap-ro-testdev"
+  enable_active_directory  = true
+  ldap_server_uri          = "ldap://nextgenwaterprediction.com"
+  ldap_system_name         = "oe"
+  ldap_bind_dn             = "svc-ldap-ro-testdev@nextgenwaterprediction.com"
+  ldap_bind_secret_name    = "svc-ldap-ro-testdev"
+  ldap_domain              = "nextgenwaterprediction.com"
+  ldap_user_search_base_dn = "DC=nextgenwaterprediction,DC=com"
 
   # Mandatory MFA layered on top of the AD password check. Every user enrolls
   # an authenticator app on next login and receives recovery codes.
   enable_mfa = true
 
+  # SIF container registry base and ORAS CLI image for staging
+  sif_registry_base = "ghcr.io/ngwpc"
+  oras_image        = "ghcr.io/oras-project/oras:v1.3.2"
+
   # Workload SIFs staged onto EFS by `make bootstrap` (sif_sync.tf): name -> OCI tag.
   # Pinned immutable builds, same rule as the images above.
   sif_workloads = {
-    "nwm-cal-mgr"  = "20260902124622Z-development"
-    "nwm-fcst-mgr" = "20260902124620Z-development"
-    "nwm-eval-mgr" = "20260909175518Z-development"
+    "nwm-cal-mgr"  = "20260917163014Z-development"
+    "nwm-fcst-mgr" = "20260917163014Z-development"
+    "nwm-eval-mgr" = "20260916205321Z-development"
   }
 
   rds_instance_class        = "db.r7g.large"

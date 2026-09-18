@@ -30,10 +30,7 @@
 # Requires: AWS credentials for the target account, the env already
 # `terraform apply`-ed (reads its terraform outputs), and jq.
 
-set -euo pipefail
-
 ENV="${1:?usage: smoke.sh <env>  (e.g. sandbox)}"
-REGION="us-east-1"
 DIR="aws/envs/${ENV}"
 PREFIX="ngencerf-$(echo "${ENV}" | tr '/' '-')"
 
@@ -42,6 +39,8 @@ if [ ! -d "${DIR}" ]; then
   exit 1
 fi
 cd "${DIR}"
+
+REGION="$(terraform output -raw aws_region 2>/dev/null || echo "${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}")"
 
 alb=$(terraform output -raw alb_dns_name 2>/dev/null || true)
 sif_names=$(terraform output -json sif_sync_task_definitions 2>/dev/null | jq -r 'keys[]' || true)

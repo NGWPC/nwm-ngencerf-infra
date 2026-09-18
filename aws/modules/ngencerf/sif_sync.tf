@@ -133,14 +133,14 @@ resource "aws_ecs_task_definition" "sif_sync" {
   container_definitions = jsonencode([
     {
       name       = "sif-sync"
-      image      = "ghcr.io/oras-project/oras:v1.3.2"
+      image      = var.oras_image
       essential  = true
       user       = "0"
       entryPoint = ["/bin/sh", "-c"]
       command    = [local.sif_sync_command]
 
       environment = [
-        { name = "SIF_REPO", value = "ghcr.io/ngwpc/${each.key}-sif" },
+        { name = "SIF_REPO", value = "${var.sif_registry_base}/${each.key}-sif" },
         { name = "SIF_NAME", value = each.key },
         { name = "SIF_TAG", value = each.value },
         { name = "HOME", value = "/tmp" },

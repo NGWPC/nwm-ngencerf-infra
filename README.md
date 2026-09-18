@@ -10,7 +10,7 @@ Terraform deliverable for the National Water Model **ngenCerf** AWS migration. P
 - Private subnets host everything: ECS Fargate tasks (Django API, Nuxt UI), RDS Postgres, ElastiCache Redis, EFS, AWS PCS controller + compute node groups
 - ALB is internal for the NGWPC envs (private subnets only; reach it over the VPC / Transit Gateway path); the module still supports a public ALB (`alb_internal = false`) when the VPC supplies public subnets
 - Outbound egress rides the VPC's existing path (Transit Gateway to the LZA centralized egress for the NGWPC envs); no IGW or NAT is created
-- S3 buckets for forcing data and archives, reached via a VPC S3 Gateway Endpoint (LZA-provided in the NGWPC VPCs)
+- S3 buckets for archives, run zips, and static model data, reached via a VPC S3 Gateway Endpoint (LZA-provided in the NGWPC VPCs)
 - IAM least-privilege role per service
 - HTTPS at the ALB (public Route 53 record + ACM cert) is the planned edge; the NGWPC envs currently serve HTTP-only over the internal ALB
 
@@ -42,6 +42,21 @@ Sizing is uniform across all three envs: every env runs the same prod-tier resou
 | PCS login             | ops on-ramp                | c6i.large, fixed 1                                    |
 
 The PCS controller is sized SMALL/MEDIUM/LARGE by the nodes + jobs it tracks, not by EC2 type: MEDIUM supports up to 512 nodes / 8192 jobs, covering the 50-node-per-partition ceiling (SMALL caps at 32). ngenCerf-server routes each job to the `c5n-9xlarge` partition (<=500 catchments) or `r8a-12xlarge` (>500) by catchment count.
+
+### External & Persistent Inputs
+
+Persistent resources and shared account items are explicitly parameterized in each environment's `main.tf` so the shared module avoids hardcoded account or bucket dependencies:
+
+- **S3 Archive & Run Zips**: `ngencerf_archive_s3_path` and `ngencerf_zips_s3_path` (e.g. `s3://ngwpc-ngencerf-archive/<env>/`). Task IAM permissions are scoped to the specified environment prefix (`arn:aws:s3:::bucket/prefix/*`) for least privilege (NIST 800-53 AC-6).
+- **Static Model Data**: `static_data_s3_path` (e.g. `s3://ngwpc-dev/nwm-tools-data/`). Read-only IAM access is granted to Django and the PCS node role, and read by `bootstrap.sh` to stage static retrospective data and ESMF weights onto EFS.
+- **Cross-Account Data KMS**: `data_s3_kms_key_arn` sets the customer-managed KMS key ARN used by CMK-encrypted cross-account buckets. When configured, grants `kms:Decrypt`, `kms:GenerateDataKey`, and `kms:DescribeKey` to Django and PCS node roles.
+- **Container Registries & Staging**: `sif_registry_base` (default `ghcr.io/ngwpc`) and `oras_image` (default `ghcr.io/oras-project/oras:v1.3.2`) allow pointing SIF artifact downloads and utility tools to ECR mirrors or private registries.
+- **Active Directory / LDAP**: `ldap_domain` and `ldap_user_search_base_dn` configure the Active Directory domain and user search base for Django authentication when AD is enabled.
+- **Session Manager Logging Policy**: `session_manager_logging_policy_name` defaults to `AWSAccelerator-SessionManagerLogging` for LZA accounts; set to `""` to omit policy attachment when deploying to non-LZA accounts.
+- **AMI Configurations**:
+  - `pcs_compute_ami_id`: Optional explicit pin for compute nodes (defaults to in-account Image Builder AMI if `build_compute_ami = true`, else PCS DLAMI sample AMI).
+  - `pcs_login_ami_id`: Optional explicit pin for the login node (defaults to AWS PCS DLAMI sample AMI from public SSM parameter `/aws/service/pcs/ami/dlami-base-ubuntu2404/x86_64/latest/ami-id`).
+  - `imagebuilder_parent_image`: Optional parent image for EC2 Image Builder recipe (defaults to Canonical Ubuntu 24.04 LTS from public SSM parameter `/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id`).
 
 ## Prerequisites
 
@@ -108,7 +123,35 @@ make destroy ENV=sandbox           # destroy sandbox (cost saver)
 make smoke ENV=sandbox             # end-to-end smoke against sandbox
 make fmt                           # terraform fmt -recursive
 make lint                          # tflint + checkov
+
+# Operations & Slurm management
+make ecs-restart ENV=ea            # force new deployment on Django + Nuxt tasks
+make ecs-status ENV=ea             # show task counts, rollout state, task defs
+make slurm-queue ENV=ea            # inspect running/pending Slurm jobs (squeue)
+make slurm-drain ENV=ea            # drain compute partitions before updating SIFs
+make slurm-resume ENV=ea           # resume compute partitions after updates
+make slurm-cancel-all ENV=ea       # cancel active/pending Slurm jobs (scancel)
+make login-ssm ENV=ea              # launch interactive AWS SSM shell on PCS login node
 ```
+
+### Safe SIF Updates & Maintenance Flow
+
+Because Slurm compute jobs mount and execute SIF containers from shared EFS, updating SIFs or static data while jobs are running can disrupt active steps (due to in-flight symlink swaps on `/ngencerf-app/singularity/`). Use this safe workflow:
+
+1. **Check or Drain Active Workloads**:
+   ```bash
+   make slurm-queue ENV=ea          # check for active jobs
+   make slurm-drain ENV=ea          # hold new submissions in PENDING
+   ```
+2. **Stage New SIFs & Static Data**:
+   ```bash
+   make bootstrap ENV=ea            # stages new SIFs onto EFS (guards against active jobs)
+   ```
+3. **Restart ECS Tasks & Resume Partitions**:
+   ```bash
+   make ecs-restart ENV=ea          # refresh Django/Nuxt containers and EFS file handles
+   make slurm-resume ENV=ea         # release partitions to schedule queued jobs
+   ```
 
 ## Dev deploy (ad-hoc container update, no Terraform)
 
@@ -158,7 +201,7 @@ This repo is designed to satisfy the security controls applicable to the **FedRA
 | `enable_key_rotation = true` on every CMK | SC-12 (cryptographic key management) |
 | TLS in transit: RDS sslmode=verify-full, Redis TLS, S3 over HTTPS | SC-8 (transmission confidentiality), SC-13 (cryptographic protection) |
 | Secrets in AWS Secrets Manager; 32-char `random_password` | IA-5 (authenticator management), SC-12 |
-| Per-task IAM roles with scoped policies (no `s3:*` / `kms:*` / `iam:*` wildcards) | AC-6 (least privilege), AC-3 (access enforcement) |
+| Per-task IAM roles with scoped policies (prefix-scoped S3 access, no `s3:*` / `kms:*` / `iam:*` wildcards) | AC-6 (least privilege), AC-3 (access enforcement) |
 | Private subnets for the data tier (RDS, EFS, Redis) | SC-7 (boundary protection) |
 | WAFv2 in front of ALB: 4 managed rule groups + 2 rate-based rules | SC-7, SC-5 (DoS protection), SI-3 (malicious-code protection), SI-4 (system monitoring) |
 | VPC Flow Logs (LZA-provided, org-wide) | AU-12 (audit record generation) |
@@ -255,11 +298,33 @@ nwm-ngencerf-infra/
 
 ## Handoff to OWP
 
-When handed this repo:
+When handed this repo to spin up a new environment or deploy into a separate AWS account:
 
-1. Configure AWS auth (CLI profile or IAM Identity Center) to your target account
-2. Run `aws/bootstrap/` in that account (one-time per account)
-3. Fill in `aws/envs/<env>/backend.hcl` and `aws/envs/<env>/terraform.tfvars` for the env you're spinning up
-4. `make init ENV=<env> && make plan ENV=<env> && make apply ENV=<env>`
-5. `make bootstrap ENV=<env>` to stage workload SIFs + static data onto EFS
-6. `make smoke ENV=<env>` to validate
+1. **AWS CLI / SSO Authentication**: Configure AWS auth (`aws sts get-caller-identity`) to the target account.
+2. **State Backend**: Run `aws/bootstrap/` in that account (one-time per account) to create the state bucket and KMS key, or point `backend.hcl` to an existing state backend.
+3. **Environment Directory & Configuration**:
+   - Create or copy an environment directory under `aws/envs/<env>/` (e.g. `cp -r aws/envs/sandbox aws/envs/myenv`).
+   - Create `backend.hcl` and `terraform.tfvars` (`owner = "<your-name>"`).
+   - In `main.tf`, configure module inputs:
+     - **S3 Storage Paths**: Set `ngencerf_archive_s3_path` and `ngencerf_zips_s3_path` to your environment's S3 URIs (e.g. `s3://my-bucket/myenv/`).
+     - **Static Model Data**: Set `static_data_s3_path` to your static model data S3 URI (e.g. `s3://my-tools-bucket/data/`).
+     - **Cross-Account KMS Key**: Set `data_s3_kms_key_arn` to the CMK ARN if your S3 buckets are encrypted with a customer-managed key.
+     - **Container Images & Registries**: If using an internal registry or ECR mirror, override `ngencerf_server_image`, `ngencerf_ui_image`, `sif_registry_base`, and `oras_image`.
+     - **LZA Logging Policy**: Set `session_manager_logging_policy_name = ""` if your target account is not managed by AWS Landing Zone Accelerator (LZA).
+     - **Active Directory / LDAP**: If enabling AD auth, provide `ldap_server_uri`, `ldap_bind_dn`, `ldap_bind_secret_name`, `ldap_domain`, and `ldap_user_search_base_dn`.
+     - **AMIs and Image Builder**: For air-gapped or restricted accounts where public SSM parameters cannot be resolved or custom golden AMIs are mandated, supply `pcs_compute_ami_id`, `pcs_login_ami_id`, and `imagebuilder_parent_image`.
+4. **Deploy**:
+   ```bash
+   make init ENV=<env>
+   make plan ENV=<env>
+   make apply ENV=<env>
+   ```
+5. **Bootstrap Staged Data**:
+   ```bash
+   make bootstrap ENV=<env>
+   ```
+   Stages the pinned workload SIF containers onto EFS and syncs the static NGen model data. (To use a custom git branch or repository mirror for static data templates, pass `NGEN_STATIC_GIT_BRANCH` or `NGEN_STATIC_GIT_ORG_URL`).
+6. **Validate**:
+   ```bash
+   make smoke ENV=<env>
+   ```

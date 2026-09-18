@@ -109,72 +109,114 @@ resource "aws_iam_role_policy" "ecs_task_execution_secrets" {
   policy = data.aws_iam_policy_document.ecs_task_execution_secrets.json
 }
 
+locals {
+  # Parse S3 URI prefix strings (e.g. s3://bucket/path/) into bucket and prefix.
+  # Handles empty strings, optional trailing slashes, and prefix extraction.
+  s3_inputs = {
+    archive = var.ngencerf_archive_s3_path
+    zips    = var.ngencerf_zips_s3_path
+    forcing = var.forcing_s3_path
+    static  = var.static_data_s3_path
+  }
+
+  s3_parsed = {
+    for k, v in local.s3_inputs : k => (
+      can(regex("^s3://([^/]+)", v)) ? {
+        bucket = regex("^s3://(?P<bucket>[^/]+)/?(?P<prefix>.*)$", v).bucket
+        prefix = regex("^s3://(?P<bucket>[^/]+)/?(?P<prefix>.*)$", v).prefix != "" ? (
+          endswith(regex("^s3://(?P<bucket>[^/]+)/?(?P<prefix>.*)$", v).prefix, "/") ?
+          regex("^s3://(?P<bucket>[^/]+)/?(?P<prefix>.*)$", v).prefix :
+          "${regex("^s3://(?P<bucket>[^/]+)/?(?P<prefix>.*)$", v).prefix}/"
+        ) : ""
+      } : null
+    )
+  }
+
+  # Read-write bucket and object ARNs (archive + zips)
+  django_rw_bucket_arns = distinct(compact([
+    local.s3_parsed.archive != null ? "arn:aws:s3:::${local.s3_parsed.archive.bucket}" : "",
+    local.s3_parsed.zips != null ? "arn:aws:s3:::${local.s3_parsed.zips.bucket}" : "",
+  ]))
+
+  django_rw_object_arns = distinct(compact([
+    local.s3_parsed.archive != null ? "arn:aws:s3:::${local.s3_parsed.archive.bucket}/${local.s3_parsed.archive.prefix}*" : "",
+    local.s3_parsed.zips != null ? "arn:aws:s3:::${local.s3_parsed.zips.bucket}/${local.s3_parsed.zips.prefix}*" : "",
+  ]))
+
+  # Read-only bucket and object ARNs (static data, and legacy forcing if configured)
+  django_ro_bucket_arns = distinct(compact([
+    local.s3_parsed.static != null ? "arn:aws:s3:::${local.s3_parsed.static.bucket}" : "",
+    local.s3_parsed.forcing != null ? "arn:aws:s3:::${local.s3_parsed.forcing.bucket}" : "",
+  ]))
+
+  django_ro_object_arns = distinct(compact([
+    local.s3_parsed.static != null ? "arn:aws:s3:::${local.s3_parsed.static.bucket}/${local.s3_parsed.static.prefix}*" : "",
+    local.s3_parsed.forcing != null ? "arn:aws:s3:::${local.s3_parsed.forcing.bucket}/${local.s3_parsed.forcing.prefix}*" : "",
+  ]))
+}
+
 # --- Django task: scoped S3 access on existing NGWPC buckets ----------
-# AC-6: scoped to specific bucket ARNs, no s3:* wildcards.
-# Buckets ngwpc-ngencerf-zips and ngwpc-ngencerf-archive live in NGWPC's
-# Data account, owned by NGWPC infra, not by this stack. The
-# cross-account access pattern (bucket policy vs role assumption) is set
-# on the bucket side; this policy grants the IAM half on the consumer side.
+# AC-6: scoped to specific bucket ARNs and environment prefixes, no s3:* wildcards.
+# Buckets for archive, zips, and static data are external/shared resources (often
+# living in the Data account, owned outside this stack). The cross-account
+# access pattern is set on the bucket side; this policy grants the IAM half
+# on the consumer side.
 #
-# The buckets are encrypted by a CMK in the Data account. Cross-account
-# kms:Decrypt + kms:GenerateDataKey must target that account's key ARN,
-# not aws_kms_key.main here. Wire a `kms` statement to the Data-account
-# CMK ARN at handoff.
+# When buckets are encrypted by a CMK in the Data account, cross-account
+# kms:Decrypt + kms:GenerateDataKey targets var.data_s3_kms_key_arn.
 
 data "aws_iam_policy_document" "django_s3" {
-  statement {
-    effect  = "Allow"
-    actions = ["s3:ListBucket"]
-    resources = [
-      "arn:aws:s3:::ngwpc-ngencerf-zips",
-      "arn:aws:s3:::ngwpc-ngencerf-archive",
-    ]
-  }
-  statement {
-    effect = "Allow"
-    actions = [
-      "s3:GetObject",
-      "s3:PutObject",
-      "s3:DeleteObject",
-    ]
-    resources = [
-      "arn:aws:s3:::ngwpc-ngencerf-zips/*",
-      "arn:aws:s3:::ngwpc-ngencerf-archive/*",
-    ]
+  dynamic "statement" {
+    for_each = length(local.django_rw_bucket_arns) > 0 ? [1] : []
+    content {
+      effect    = "Allow"
+      actions   = ["s3:ListBucket"]
+      resources = local.django_rw_bucket_arns
+    }
   }
 
-  # Read-only on ngwpc-forcing (Data account). The data-assimilation engine
-  # reads SNODAS / SMAP / SNOTEL observation CSVs from s3://ngwpc-forcing/
-  # (snodas_csv, smap_csv, snotel_csv) at validation time. Read-only: the
-  # engine never writes here. Same consumer-side IAM half as above; the
-  # bucket-side grant is set on the Data account.
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:ListBucket"]
-    resources = ["arn:aws:s3:::ngwpc-forcing"]
-  }
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:GetObject"]
-    resources = ["arn:aws:s3:::ngwpc-forcing/*"]
+  dynamic "statement" {
+    for_each = length(local.django_rw_object_arns) > 0 ? [1] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "s3:GetObject",
+        "s3:PutObject",
+        "s3:DeleteObject",
+      ]
+      resources = local.django_rw_object_arns
+    }
   }
 
-  # Read-only on ngwpc-dev nwm-tools-data (Data account). The server's
-  # observation-data reads are moving from ngwpc-forcing to ngwpc-dev; the
-  # forcing statements above are kept during the transition and get removed
-  # once the ngwpc-dev path is the only one in use. GetObject is scoped to the
-  # nwm-tools-data prefix to match the Data-side bucket-policy grant (which is
-  # prefix-conditioned, not bucket-wide); widen both halves together if the
-  # server's data lands under a different prefix.
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:ListBucket"]
-    resources = ["arn:aws:s3:::ngwpc-dev"]
+  dynamic "statement" {
+    for_each = length(local.django_ro_bucket_arns) > 0 ? [1] : []
+    content {
+      effect    = "Allow"
+      actions   = ["s3:ListBucket"]
+      resources = local.django_ro_bucket_arns
+    }
   }
-  statement {
-    effect    = "Allow"
-    actions   = ["s3:GetObject"]
-    resources = ["arn:aws:s3:::ngwpc-dev/nwm-tools-data/*"]
+
+  dynamic "statement" {
+    for_each = length(local.django_ro_object_arns) > 0 ? [1] : []
+    content {
+      effect    = "Allow"
+      actions   = ["s3:GetObject"]
+      resources = local.django_ro_object_arns
+    }
+  }
+
+  dynamic "statement" {
+    for_each = var.data_s3_kms_key_arn != "" ? [1] : []
+    content {
+      effect = "Allow"
+      actions = [
+        "kms:Decrypt",
+        "kms:GenerateDataKey",
+        "kms:DescribeKey",
+      ]
+      resources = [var.data_s3_kms_key_arn]
+    }
   }
 }
 

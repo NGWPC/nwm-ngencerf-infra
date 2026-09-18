@@ -20,14 +20,18 @@
 locals {
   # Region-scoped base URL for the signed AWS PCS installer tarballs.
   pcs_installer_base = "https://aws-pcs-repo-${data.aws_region.current.name}.s3.${data.aws_region.current.name}.amazonaws.com"
+
+  # Resolved Ubuntu 24.04 AMI ID if queried from SSM, or empty string when overridden.
+  ubuntu_2404_ami_id = length(data.aws_ssm_parameter.ubuntu_2404) > 0 ? nonsensitive(data.aws_ssm_parameter.ubuntu_2404[0].value) : ""
 }
 
 # --- Base image (clean Ubuntu 24.04) ------------------------------------
 # Canonical's official Ubuntu 24.04 LTS server AMI, resolved fresh on each build
-# from Canonical's public SSM parameter so we always start from a patched base.
+# from Canonical's public SSM parameter (unless overridden by var.imagebuilder_parent_image)
+# so we always start from a patched base.
 
 data "aws_ssm_parameter" "ubuntu_2404" {
-  count = var.build_compute_ami ? 1 : 0
+  count = var.build_compute_ami && var.imagebuilder_parent_image == "" ? 1 : 0
   name  = "/aws/service/canonical/ubuntu/server/24.04/stable/current/amd64/hvm/ebs-gp3/ami-id"
 }
 
@@ -68,10 +72,10 @@ resource "aws_iam_role_policy_attachment" "imagebuilder_ssm" {
 
 # Same Session Manager logging policy the PCS nodes get, on the transient build
 # instance's profile (it's an EC2 instance the Sandbox rules of the road cover).
-# Always attached when an AMI build runs; the ARN is the account-scoped
-# session_manager_logging_policy_arn local (see pcs.tf).
+# Attached when an AMI build runs and policy ARN is resolved (default LZA policy
+# AWSAccelerator-SessionManagerLogging; omitted if session_manager_logging_policy_name is "").
 resource "aws_iam_role_policy_attachment" "imagebuilder_session_logging" {
-  count      = var.build_compute_ami ? 1 : 0
+  count      = var.build_compute_ami && local.session_manager_logging_policy_arn != "" ? 1 : 0
   role       = aws_iam_role.imagebuilder[0].name
   policy_arn = local.session_manager_logging_policy_arn
 }
@@ -206,7 +210,7 @@ resource "aws_imagebuilder_image_recipe" "pcs_compute" {
   count        = var.build_compute_ami ? 1 : 0
   name         = "${var.name_prefix}-pcs-compute"
   version      = "1.0.4"
-  parent_image = nonsensitive(data.aws_ssm_parameter.ubuntu_2404[0].value)
+  parent_image = var.imagebuilder_parent_image != "" ? var.imagebuilder_parent_image : local.ubuntu_2404_ami_id
 
   component {
     component_arn = aws_imagebuilder_component.pcs_compute[0].arn

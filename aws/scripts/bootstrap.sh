@@ -23,11 +23,8 @@
 # Requires: AWS credentials for the target account, the env already
 # `terraform apply`-ed, and jq.
 
-set -euo pipefail
-
 ENV="${1:?usage: bootstrap.sh <env> [all|sifs|static]  (e.g. sandbox)}"
 STAGE="${2:-all}"
-REGION="us-east-1"
 DIR="aws/envs/${ENV}"
 PREFIX="ngencerf-$(echo "${ENV}" | tr '/' '-')"
 
@@ -44,6 +41,8 @@ if [ ! -d "${DIR}" ]; then
   exit 1
 fi
 cd "${DIR}"
+
+REGION="$(terraform output -raw aws_region 2>/dev/null || echo "${AWS_REGION:-${AWS_DEFAULT_REGION:-us-east-1}}")"
 
 cluster=$(terraform output -raw ecs_cluster_name 2>/dev/null || true)
 subnets=$(terraform output -json private_subnet_ids 2>/dev/null | jq -r 'join(",")' || true)
@@ -111,35 +110,39 @@ run_static_login() {
   fi
   echo "  login node: ${iid}"
 
-  # The load script, run on the login node as root. Pinned to development for now
-  # (tighten to a tag/commit when the static config is versioned).
+  # The load script, run on the login node as root.
+  static_data_s3_path=$(terraform output -raw static_data_s3_path 2>/dev/null || echo "s3://ngwpc-dev/nwm-tools-data/")
+  static_data_s3_path="${static_data_s3_path%/}/"
+  git_branch="${NGEN_STATIC_GIT_BRANCH:-development}"
+  git_org_url="${NGEN_STATIC_GIT_ORG_URL:-https://github.com/NGWPC}"
+
   script=$(
-    cat <<'EOS'
+    cat <<EOS
 set -eu
 STATIC=/ngencerf-app/data/ngen-cal-data/ngen-static-files
-mkdir -p "$STATIC"
-echo "Syncing nwm_retrospective + esmf from ngwpc-dev (nwm-tools-data)..."
-aws s3 sync s3://ngwpc-dev/nwm-tools-data/nwm_retrospective "$STATIC/nwm_retrospective" --no-progress
-aws s3 sync s3://ngwpc-dev/nwm-tools-data/esmf "$STATIC/forcing_static_dir" --no-progress
+mkdir -p "\$STATIC"
+echo "Syncing nwm_retrospective + esmf from ${static_data_s3_path}..."
+aws s3 sync "${static_data_s3_path}nwm_retrospective" "\$STATIC/nwm_retrospective" --no-progress
+aws s3 sync "${static_data_s3_path}esmf" "\$STATIC/forcing_static_dir" --no-progress
 echo "Cloning module_parameter_files (nwm-msw-mgr)..."
-cd "$STATIC" && rm -rf module_parameter_files tmp-msw
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-msw-mgr.git tmp-msw
+cd "\$STATIC" && rm -rf module_parameter_files tmp-msw
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/nwm-msw-mgr.git tmp-msw
 ( cd tmp-msw && git sparse-checkout set src/mswm/module_parameter_files )
-mv tmp-msw/src/mswm/module_parameter_files "$STATIC/" && rm -rf tmp-msw
+mv tmp-msw/src/mswm/module_parameter_files "\$STATIC/" && rm -rf tmp-msw
 echo "Cloning bmi_forcing_templates (ngen-forcing)..."
-cd "$STATIC" && rm -rf bmi_forcing_templates tmp-forcing
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/ngen-forcing.git tmp-forcing
+cd "\$STATIC" && rm -rf bmi_forcing_templates tmp-forcing
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/ngen-forcing.git tmp-forcing
 ( cd tmp-forcing && git sparse-checkout set NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates )
-mv tmp-forcing/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates "$STATIC/bmi_forcing_templates" && rm -rf tmp-forcing
+mv tmp-forcing/NextGen_Forcings_Engine_BMI/BMI_NextGen_Configs/config_templates "\$STATIC/bmi_forcing_templates" && rm -rf tmp-forcing
 echo "Cloning verification_data parquet inputs (nwm-eval-mgr)..."
-cd "$STATIC" && rm -rf verification_data tmp-nwm-eval-mgr
-git clone --depth 1 --filter=blob:none --sparse -b development https://github.com/NGWPC/nwm-eval-mgr.git tmp-nwm-eval-mgr
+cd "\$STATIC" && rm -rf verification_data tmp-nwm-eval-mgr
+git clone --depth 1 --filter=blob:none --sparse -b ${git_branch} ${git_org_url}/nwm-eval-mgr.git tmp-nwm-eval-mgr
 ( cd tmp-nwm-eval-mgr && git sparse-checkout set data/inputs/gage_files )
-mkdir -p "$STATIC/verification_data"
-find tmp-nwm-eval-mgr/data/inputs/gage_files -type f -name '*.parquet' -exec cp {} "$STATIC/verification_data/" \;
+mkdir -p "\$STATIC/verification_data"
+find tmp-nwm-eval-mgr/data/inputs/gage_files -type f -name '*.parquet' -exec cp {} "\$STATIC/verification_data/" \;
 rm -rf tmp-nwm-eval-mgr
 echo "Static data staged. Top level:"
-ls -la "$STATIC"
+ls -la "\$STATIC"
 EOS
   )
   # base64 so the multi-line script survives SSM parameter quoting.
@@ -190,6 +193,50 @@ if [ "${STAGE}" = "all" ] || [ "${STAGE}" = "sifs" ]; then
   if [ -z "${sg}" ] || [ "${sg}" = "null" ] || [ -z "${names}" ]; then
     echo "ERROR: sif-sync outputs missing for env '${ENV}'. Is enable_pcs = true and sif_workloads set?" >&2
     exit 1
+  fi
+
+  # Guard: check if active Slurm jobs are running before swapping SIFs
+  iid_check=$(aws ec2 describe-instances --region "${REGION}" \
+    --filters "Name=tag:Name,Values=${PREFIX}-pcs-node" "Name=instance-type,Values=c6i.large" \
+    "Name=instance-state-name,Values=running" \
+    --query 'Reservations[0].Instances[0].InstanceId' --output text 2>/dev/null || true)
+  if [ -n "${iid_check}" ] && [ "${iid_check}" != "None" ]; then
+    check_cmd=$(cat <<'EOF'
+slurm_dir=""
+for v in /opt/aws/pcs/scheduler/slurm-25.11 /opt/aws/pcs/scheduler/slurm; do
+  [ -d "$v" ] && { slurm_dir="$v"; break; }
+done
+[ -z "$slurm_dir" ] && slurm_dir=$(find /opt/aws/pcs/scheduler -maxdepth 1 -type d -name 'slurm-*' 2>/dev/null | sort -V | tail -n1)
+[ -n "$slurm_dir" ] && PATH="$slurm_dir/bin:$PATH"
+export PATH
+squeue -h 2>/dev/null | wc -l
+EOF
+)
+    b64_check=$(printf '%s' "${check_cmd}" | base64 | tr -d '\n')
+    cmd_id=$(aws ssm send-command --region "${REGION}" --instance-ids "${iid_check}" \
+      --document-name AWS-RunShellScript \
+      --parameters "commands=[\"echo ${b64_check} | base64 -d | bash\"]" \
+      --query 'Command.CommandId' --output text 2>/dev/null || true)
+    if [ -n "${cmd_id}" ] && [ "${cmd_id}" != "None" ]; then
+      for _ in $(seq 1 10); do
+        status=$(aws ssm get-command-invocation --region "${REGION}" --command-id "${cmd_id}" --instance-id "${iid_check}" --query 'Status' --output text 2>/dev/null || echo "Pending")
+        case "${status}" in
+          Success | Failed | Cancelled | TimedOut) break ;;
+          *) sleep 1 ;;
+        esac
+      done
+      running_jobs=$(aws ssm get-command-invocation --region "${REGION}" --command-id "${cmd_id}" --instance-id "${iid_check}" --query 'StandardOutputContent' --output text 2>/dev/null | tr -d '[:space:]' || echo "0")
+      if [ "${running_jobs:-0}" -gt 0 ]; then
+        echo "WARNING: ${running_jobs} active/queued Slurm job(s) detected on ${PREFIX}!" >&2
+        echo "  Staging new SIFs now may break running jobs (symlink swap on shared EFS)." >&2
+        echo "  Use 'make slurm-queue ENV=${ENV}' to view, or 'make slurm-drain ENV=${ENV}' before updating." >&2
+        if [ "${FORCE_SIF_SYNC:-0}" != "1" ]; then
+          echo "  Set FORCE_SIF_SYNC=1 to proceed anyway. Aborting SIF staging." >&2
+          exit 1
+        fi
+        echo "  Proceeding with SIF staging due to FORCE_SIF_SYNC=1."
+      fi
+    fi
   fi
 
   for name in ${names}; do

@@ -21,18 +21,24 @@ creates is internal, and public reach is provided by the centralized edge
 Account-side prerequisites that must exist before the first apply:
 
 - The Secrets Manager secret `svc-ldap-ro-testdev` (LDAP read-only bind
-  password under a `password` key) in the target account. The apply fails fast
-  at a data lookup if it is missing.
+  password under a `password` key) in the target account if `enable_active_directory = true`.
+  The apply fails fast at a data lookup if it is missing.
 - EC2 service quota headroom for `c5n.9xlarge` and `r8a.12xlarge` (the two
   Slurm compute partitions; they autoscale from zero).
-- Write access to the state bucket named in the env's `backend.hcl`.
+- S3 access to the Terraform remote state bucket named in the env's `backend.hcl`.
+- Cross-account S3 access (and KMS decrypt permissions via `data_s3_kms_key_arn` if CMK-encrypted)
+  for archive, run zips, and static model data.
+- If deploying into a non-LZA account, set `session_manager_logging_policy_name = ""` in `main.tf`
+  to omit attaching the AWS Landing Zone Accelerator Session Manager logging policy.
+- AMI lookups: Standard accounts automatically resolve Canonical Ubuntu 24.04 and the AWS PCS DLAMI sample AMI via public SSM parameters. For air-gapped or restricted accounts, pin `pcs_compute_ami_id`, `pcs_login_ami_id`, and `imagebuilder_parent_image` in `main.tf`.
 
 ## 2. One-time setup per environment
 
 ```bash
-cd aws/envs/ea   # or aws/envs/uat2
-cp backend.hcl.example backend.hcl              # values are already correct per env
-cp terraform.tfvars.example terraform.tfvars    # owner is already set
+cd aws/envs/ea   # or aws/envs/uat2 / aws/envs/sandbox
+cp backend.hcl.example backend.hcl              # review backend state bucket and key
+cp terraform.tfvars.example terraform.tfvars    # set owner
+# Review main.tf inputs: S3 bucket prefixes, static_data_s3_path, data_s3_kms_key_arn, registry URLs, AMI pins
 cd ../../..
 ```
 

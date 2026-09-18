@@ -54,15 +54,17 @@ resource "aws_ecs_task_definition" "django" {
           { name = "CERF_SERVER_DATABASE_HOST", value = module.rds.db_instance_address },
           { name = "REDIS_URL", value = "rediss://${aws_elasticache_replication_group.main.primary_endpoint_address}:6379/1" },
 
-          # ngenCerf archive + zip storage in S3 (shared buckets in the Data
+          # ngenCerf archive, zip, and static data storage in S3 (shared buckets in the Data
           # account). The server writes archived run directories under
           # NGENCERF_ARCHIVE_S3_PATH and downloadable run zips under
           # NGENCERF_ZIPS_S3_PATH (cloud_util.py reads both via the Django task
-          # role). Each env sets its own prefix (env main.tf). S3 has no real
-          # directories: a prefix exists only once an object is under it, so seed
-          # a .keep object in each prefix before the first archive or zip write.
+          # role). Static data is referenced under STATIC_DATA_S3_PATH. Each env sets
+          # its own prefix (env main.tf). S3 has no real directories: a prefix exists
+          # only once an object is under it, so seed a .keep object in each prefix
+          # before the first archive or zip write.
           { name = "NGENCERF_ARCHIVE_S3_PATH", value = var.ngencerf_archive_s3_path },
           { name = "NGENCERF_ZIPS_S3_PATH", value = var.ngencerf_zips_s3_path },
+          { name = "STATIC_DATA_S3_PATH", value = var.static_data_s3_path },
 
           # EDFS (NOAA Enterprise Data Services): at gage-create time (save_gage_tab)
           # the server fetches hydrofabric geopackages, observational streamflow, and
@@ -74,6 +76,10 @@ resource "aws_ecs_task_definition" "django" {
           { name = "ENTERPRISE_DATA_URL", value = var.enterprise_data_url },
           { name = "ENTERPRISE_DATA_ENV", value = var.enterprise_data_env },
         ],
+
+        var.forcing_s3_path != "" ? [
+          { name = "FORCING_S3_PATH", value = var.forcing_s3_path },
+        ] : [],
 
         var.enable_pcs ? [
           # Slurm REST API: Django POSTs jobs to slurmrestd on the PCS
@@ -143,18 +149,26 @@ resource "aws_ecs_task_definition" "django" {
           { name = "NWM_EVAL_SINGULARITY_CONTAINER_PATH", value = "/ngencerf-app/singularity/nwm-eval-mgr.sif" },
         ] : [],
 
-        var.enable_active_directory ? [
-          # Active Directory / LDAP auth. settings.py reads these via os.getenv;
-          # ACTIVE_DIRECTORY_ENABLED gates the whole feature. The bind PASSWORD is
-          # NOT here, it is injected from Secrets Manager via the secrets block
-          # below. LDAP_USER_SEARCH_BASE_DN + LDAP_DOMAIN fall back to the image
-          # defaults (DC=nextgenwaterprediction,DC=com). Only set when enabled.
-          { name = "ACTIVE_DIRECTORY_ENABLED", value = "true" },
-          { name = "LDAP_SERVER_URI", value = var.ldap_server_uri },
-          { name = "LDAP_SYSTEM_NAME", value = var.ldap_system_name },
-          { name = "LDAP_BIND_DN", value = var.ldap_bind_dn },
-          { name = "LDAP_USE_SSL", value = var.ldap_use_ssl ? "true" : "false" },
-        ] : [],
+        var.enable_active_directory ? concat(
+          [
+            # Active Directory / LDAP auth. settings.py reads these via os.getenv;
+            # ACTIVE_DIRECTORY_ENABLED gates the whole feature. The bind PASSWORD is
+            # NOT here, it is injected from Secrets Manager via the secrets block
+            # below. LDAP_USER_SEARCH_BASE_DN + LDAP_DOMAIN fall back to the image
+            # defaults (DC=nextgenwaterprediction,DC=com) if not explicitly supplied.
+            { name = "ACTIVE_DIRECTORY_ENABLED", value = "true" },
+            { name = "LDAP_SERVER_URI", value = var.ldap_server_uri },
+            { name = "LDAP_SYSTEM_NAME", value = var.ldap_system_name },
+            { name = "LDAP_BIND_DN", value = var.ldap_bind_dn },
+            { name = "LDAP_USE_SSL", value = var.ldap_use_ssl ? "true" : "false" },
+          ],
+          var.ldap_user_search_base_dn != "" ? [
+            { name = "LDAP_USER_SEARCH_BASE_DN", value = var.ldap_user_search_base_dn }
+          ] : [],
+          var.ldap_domain != "" ? [
+            { name = "LDAP_DOMAIN", value = var.ldap_domain }
+          ] : [],
+        ) : [],
 
         var.enable_mfa ? [
           # Mandatory MFA. settings.py reads this as
