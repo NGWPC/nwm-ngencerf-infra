@@ -58,6 +58,12 @@ variable "enable_pcs" {
   default     = false
 }
 
+variable "enable_waf" {
+  type        = bool
+  description = "When true, provisions an AWS WAFv2 Web ACL, associates it with the ALB, and streams WAF logs to CloudWatch. Default true preserves defense-in-depth and compliance defaults; set false to disable WAF and eliminate associated costs in private VPCs or non-production deployments."
+  default     = true
+}
+
 variable "enterprise_data_url" {
   type        = string
   description = "Full base API URL of the EDFS / NOAA Enterprise Data Services endpoint the server fetches hydrofabric geopackages, observational streamflow, and module-parameter metadata from (ENTERPRISE_DATA_URL in settings.py: os.getenv with no in-image default). Standard endpoints: 'http://edfs.test.nextgenwaterprediction.com/api/v1/' (Test) or 'https://edfs.oe.nextgenwaterprediction.com/api/v1/' (Optimization); set to the target EDFS API base URL in external deployments (e.g. OWP). EDFS is private NOAA infra with no public DNS record, so the env's VPC must have a resolver path to it."

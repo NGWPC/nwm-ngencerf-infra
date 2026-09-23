@@ -30,6 +30,7 @@ Account-side prerequisites that must exist before the first apply:
   for archive, run zips, and static model data.
 - EDFS (Enterprise Data Services) configuration: Set `enterprise_data_url` in `main.tf`
   to the full base API endpoint (`http://edfs.test.nextgenwaterprediction.com/api/v1/`).
+- WAF configuration: By default, `enable_waf = true` provisions an AWS WAFv2 Web ACL and associates it with the ALB. For private VPCs already protected by an upstream perimeter WAF or cost-sensitive non-production environments, set `enable_waf = false` in `main.tf`.
 - If deploying into a non-LZA account, set `session_manager_logging_policy_name = ""` in `main.tf`
   to omit attaching the AWS Landing Zone Accelerator Session Manager logging policy.
 - AMI lookups: Standard accounts automatically resolve Canonical Ubuntu 24.04 and the AWS PCS DLAMI sample AMI via public SSM parameters. For air-gapped or restricted accounts, pin `pcs_compute_ami_id`, `pcs_login_ami_id`, and `imagebuilder_parent_image` in `main.tf`.

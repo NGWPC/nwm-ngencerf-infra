@@ -66,11 +66,13 @@ module "ngencerf" {
 
   # Customer-facing env: production-safe defaults on (multi-AZ RDS, deletion
   # protection, force_destroy off). The env's own WAF runs in count (observe)
-  # mode: the centrally managed WAF at the public edge already enforces the
-  # program rule set in front of this stack, and a second blocking ACL inside
-  # the path can 403 legitimate API traffic (managed SQLi rules can match
-  # JSON request bodies). Count keeps the logging without double enforcement.
+  # mode (enable_waf = true, waf_rule_action = "count"): the centrally managed
+  # WAF at the public edge already enforces the program rule set in front of this
+  # stack, and a second blocking ACL inside the path can 403 legitimate API traffic
+  # (managed SQLi rules can match JSON request bodies). Count keeps the logging
+  # without double enforcement. Set enable_waf = false to omit WAF resources.
   production      = true
+  enable_waf      = true
   waf_rule_action = "count"
 
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami

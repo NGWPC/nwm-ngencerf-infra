@@ -64,6 +64,11 @@ module "ngencerf" {
 
   production = false
 
+  # WAF: on by default in count mode (observe). In private VPCs or external
+  # deployments behind an existing perimeter WAF, set enable_waf = false to omit
+  # the Web ACL and CloudWatch log group.
+  enable_waf = true
+
   # Team Amazon WorkSpaces (Test account, both AZ subnets = 10.6.2.0/24)
   # reach RDS Postgres directly for testing. Module default is empty, so
   # prod-tier envs keep the DB reachable only from the app.

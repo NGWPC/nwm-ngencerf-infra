@@ -8,6 +8,7 @@
 # SC-5: rate-based rules provide DoS protection.
 
 resource "aws_wafv2_web_acl" "main" {
+  count       = var.enable_waf ? 1 : 0
   name        = "${var.name_prefix}-waf"
   scope       = "REGIONAL"
   description = "ngencerf perimeter WAF - managed rule groups + per-IP rate limits."
@@ -241,14 +242,16 @@ resource "aws_wafv2_web_acl" "main" {
 # targets (ALB / API Gateway / AppSync), and targets can be swapped
 # without recreating the ACL.
 resource "aws_wafv2_web_acl_association" "main" {
+  count        = var.enable_waf ? 1 : 0
   resource_arn = module.alb.arn
-  web_acl_arn  = aws_wafv2_web_acl.main.arn
+  web_acl_arn  = aws_wafv2_web_acl.main[0].arn
 }
 
 # Send all WAF request decisions to a dedicated CloudWatch log group. AWS
 # requires the log group name to start with "aws-waf-logs-", a naming
 # convention enforced by the WAF service when wiring logging.
 resource "aws_wafv2_web_acl_logging_configuration" "main" {
-  resource_arn            = aws_wafv2_web_acl.main.arn
-  log_destination_configs = [aws_cloudwatch_log_group.waf.arn]
+  count                   = var.enable_waf ? 1 : 0
+  resource_arn            = aws_wafv2_web_acl.main[0].arn
+  log_destination_configs = [aws_cloudwatch_log_group.waf[0].arn]
 }
