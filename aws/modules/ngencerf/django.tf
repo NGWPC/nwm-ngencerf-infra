@@ -68,13 +68,10 @@ resource "aws_ecs_task_definition" "django" {
 
           # EDFS (NOAA Enterprise Data Services): at gage-create time (save_gage_tab)
           # the server fetches hydrofabric geopackages, observational streamflow, and
-          # module-parameter metadata from here. settings.py reads both with os.getenv
-          # and NO default, so unset makes the server raise
-          # ValueError("Invalid environment: 'None'") before any fetch. ENTERPRISE_DATA_ENV
-          # ('test'/'oe') also selects which EDFS host the MSWM client calls. The host is
-          # private NOAA infra with no public DNS record, so the VPC needs a resolver path.
+          # module-parameter metadata from here. settings.py reads ENTERPRISE_DATA_URL
+          # via os.getenv with no in-image default. The host is private NOAA infra with
+          # no public DNS record, so the VPC needs a resolver path.
           { name = "ENTERPRISE_DATA_URL", value = var.enterprise_data_url },
-          { name = "ENTERPRISE_DATA_ENV", value = var.enterprise_data_env },
         ],
 
         var.forcing_s3_path != "" ? [

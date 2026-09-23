@@ -3,6 +3,6 @@
 
 bucket       = "ngwpc-infra-sbox"
 key          = "terraform/nwm-ngencerf-infra/sandbox/terraform.tfstate"
-region       = "us-east-1"
+region       = "us-east-1" # Region of the state S3 bucket (us-east-1 for NGWPC accounts)
 encrypt      = true
 use_lockfile = true

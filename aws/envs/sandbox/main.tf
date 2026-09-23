@@ -64,6 +64,11 @@ module "ngencerf" {
 
   production = false
 
+  # WAF: on by default in count mode (observe). In private VPCs or external
+  # deployments behind an existing perimeter WAF, set enable_waf = false to omit
+  # the Web ACL and CloudWatch log group.
+  enable_waf = true
+
   # Team Amazon WorkSpaces (Test account, both AZ subnets = 10.6.2.0/24)
   # reach RDS Postgres directly for testing. Module default is empty, so
   # prod-tier envs keep the DB reachable only from the app.
@@ -99,12 +104,11 @@ module "ngencerf" {
   static_data_s3_path      = "s3://ngwpc-dev/nwm-tools-data/"
   data_s3_kms_key_arn      = "" # Set to Data-account CMK ARN if cross-account buckets are CMK-encrypted
 
-  # EDFS (NOAA Enterprise Data Services): Sandbox uses the Test data services.
-  # Required by save_gage_tab (unset -> ValueError "Invalid environment: 'None'").
-  # The host resolves from this VPC only once EDFS DNS is wired (a Route 53
-  # resolver rule / private hosted zone) into SBOX-Compute.
-  enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/"
-  enterprise_data_env = "test"
+  # EDFS (NOAA Enterprise Data Services): Sandbox uses the Test data services API.
+  # Required by save_gage_tab. The host resolves from this VPC only once EDFS DNS
+  # is wired (a Route 53 resolver rule / private hosted zone) into SBOX-Compute.
+  # In external or non-NGWPC deployments, set enterprise_data_url to the target API base.
+  enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/api/v1/"
 
   # Active Directory / LDAP auth against the NGWPC AWS Managed Microsoft AD.
   # Off in the module by default; sandbox opts in. The bind PASSWORD comes from

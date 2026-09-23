@@ -65,8 +65,12 @@ module "ngencerf" {
   alb_internal = true
 
   # Customer-facing env: production-safe defaults on (multi-AZ RDS, deletion
-  # protection, force_destroy off) and the WAF enforcing (block, not count).
+  # protection, force_destroy off). The env's own WAF runs in count (observe)
+  # mode (enable_waf = true, waf_rule_action = "count"): the centrally managed
+  # WAF at the public edge already enforces the program rule set in front of this
+  # stack. Set enable_waf = false to omit WAF resources in non-LZA/external deployments.
   production      = true
+  enable_waf      = true
   waf_rule_action = "count"
 
   # PCS (managed Slurm) on, with the compute AMI built in-account: build_compute_ami
@@ -105,11 +109,11 @@ module "ngencerf" {
   data_s3_kms_key_arn      = "" # Set to Data-account CMK ARN if cross-account buckets are CMK-encrypted
 
   # EDFS (NOAA Enterprise Data Services): this env lives in the Test account,
-  # so it uses the Test data services. Required by save_gage_tab. The host must
+  # so it uses the Test data services API. Required by save_gage_tab. The host must
   # resolve from the Test-ngen-Compute VPC (Route 53 private-hosted-zone
   # association plus EDFS allow-list, same wiring the sandbox VPC received).
-  enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/"
-  enterprise_data_env = "test"
+  # In external or non-NGWPC deployments, set enterprise_data_url to the target API base.
+  enterprise_data_url = "http://edfs.test.nextgenwaterprediction.com/api/v1/"
 
   # Active Directory / LDAP auth against the NGWPC AWS Managed Microsoft AD,
   # with mandatory MFA on top. Mirrors the sandbox wiring (dev directory

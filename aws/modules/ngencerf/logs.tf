@@ -23,6 +23,7 @@ resource "aws_cloudwatch_log_group" "nuxt" {
 # prefix. The KMS key policy in secrets.tf grants the logs service principal
 # access to this group name explicitly.
 resource "aws_cloudwatch_log_group" "waf" {
+  count             = var.enable_waf ? 1 : 0
   name              = "aws-waf-logs-${var.name_prefix}"
   retention_in_days = 365
   kms_key_id        = aws_kms_key.main.arn
