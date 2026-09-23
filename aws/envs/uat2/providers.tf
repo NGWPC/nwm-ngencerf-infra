@@ -1,5 +1,5 @@
 provider "aws" {
-  region = "us-east-1"
+  region = var.aws_region
 
   # Single source of tags (local.common_tags in main.tf), used here for every
   # aws-provider resource AND passed to the module as var.tags so the awscc PCS
@@ -15,5 +15,5 @@ provider "aws" {
 # PCS resources are tagged via an explicit tags input passed to the module.
 # Region must match the aws provider.
 provider "awscc" {
-  region = "us-east-1"
+  region = var.aws_region
 }

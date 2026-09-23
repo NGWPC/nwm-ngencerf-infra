@@ -210,7 +210,7 @@ This repo is designed to satisfy the security controls applicable to the **FedRA
 | 365-day CloudWatch log retention (matches LZA org default) | AU-11 (audit record retention) |
 | `default_tags` on AWS provider (`Project`, `ManagedBy`, `Repo`, `Owner`, `Environment`) | CM-8 (information system component inventory) |
 | `BackupPlan: Daily` tags on RDS + EFS (consumed by LZA backup vault) | CP-9 (information system backup) |
-| Region restriction to `us-east-1` via LZA SCP | AC-3 (access enforcement) |
+| Region restriction to `us-east-1` via LZA SCP (NGWPC accounts) | AC-3 (access enforcement) |
 | pre-commit hooks: `terraform_fmt`, `terraform_validate`, `tflint`, `Checkov`, `gitleaks` | SA-11 (developer security testing) |
 
 Inline `# SC-28: ...` / `# AC-6: ...` comments throughout the module map each resource declaration to the control(s) it satisfies, so a reviewer reading the code can audit per-resource.
@@ -222,6 +222,15 @@ For prod-tier environments (everything outside `sandbox`), the env's `main.tf` f
 - `production = true`: multi-AZ RDS, deletion protection on, `force_destroy = false` on durable resources (CP-2, SC-28)
 - `waf_rule_action = "block"`: WAF enforces matching rules in prod (vs. `count` for observation in dev) (SC-7, SI-4)
 - HTTPS listener on the ALB via `terraform-aws-acm-cross-account` (ACM cert + HTTP->HTTPS redirect) (SC-8, SC-13)
+
+### Multi-region and external deployment portability
+
+While NGWPC Landing Zone Accelerator (LZA) accounts use `us-east-1` (enforced by organizational SCP), the infrastructure code is fully portable across AWS regions and external account topologies.
+
+- **AWS Region**: Parameterized via `variable "aws_region"` in each environment root module (`aws/envs/<env>/variables.tf`), defaulting to `"us-east-1"`. To deploy in another region (such as `us-east-2` or `us-west-2`), override `aws_region` in `terraform.tfvars` or via `-var aws_region=<region>`. Ensure the target region supports AWS PCS if compute is enabled.
+- **EDFS Endpoints**: The full EDFS API base URL is configurable per environment via `enterprise_data_url` in `main.tf` (NGWPC non-public example: `'http://edfs.test.nextgenwaterprediction.com/api/v1/'`). Non-NGWPC / OWP deployments can point directly to their target EDFS API base without code changes or environment token restrictions.
+- **Persistent Resources**: S3 buckets and paths (`ngencerf_archive_s3_path`, `ngencerf_zips_s3_path`, `static_data_s3_path`) and KMS keys (`data_s3_kms_key_arn`) are explicitly parameterized in each environment's `main.tf`.
+- **Non-LZA Environments**: In non-LZA environments, set `session_manager_logging_policy_name = ""` in `main.tf` to omit attaching Landing Zone Session Manager policies. Additionally, one can leverage this pattern to specify a similar compute environment policy for their target compute environment deployments.
 
 ## Conventions
 

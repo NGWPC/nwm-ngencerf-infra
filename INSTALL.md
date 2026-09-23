@@ -15,7 +15,7 @@ creates is internal, and public reach is provided by the centralized edge
 ## 1. Prerequisites
 
 - Terraform >= 1.10
-- AWS CLI v2, authenticated to the target account, region `us-east-1`
+- AWS CLI v2, authenticated to the target account. Default region is `us-east-1`; other AWS regions supporting AWS PCS (`us-east-2`, `us-west-2`) can be selected via `aws_region`.
 - `make` (all commands below are Makefile targets run from the repo root)
 
 Account-side prerequisites that must exist before the first apply:
@@ -28,6 +28,8 @@ Account-side prerequisites that must exist before the first apply:
 - S3 access to the Terraform remote state bucket named in the env's `backend.hcl`.
 - Cross-account S3 access (and KMS decrypt permissions via `data_s3_kms_key_arn` if CMK-encrypted)
   for archive, run zips, and static model data.
+- EDFS (Enterprise Data Services) configuration: Set `enterprise_data_url` in `main.tf`
+  to the full base API endpoint (`http://edfs.test.nextgenwaterprediction.com/api/v1/`).
 - If deploying into a non-LZA account, set `session_manager_logging_policy_name = ""` in `main.tf`
   to omit attaching the AWS Landing Zone Accelerator Session Manager logging policy.
 - AMI lookups: Standard accounts automatically resolve Canonical Ubuntu 24.04 and the AWS PCS DLAMI sample AMI via public SSM parameters. For air-gapped or restricted accounts, pin `pcs_compute_ami_id`, `pcs_login_ami_id`, and `imagebuilder_parent_image` in `main.tf`.
@@ -36,9 +38,9 @@ Account-side prerequisites that must exist before the first apply:
 
 ```bash
 cd aws/envs/ea   # or aws/envs/uat2 / aws/envs/sandbox
-cp backend.hcl.example backend.hcl              # review backend state bucket and key
-cp terraform.tfvars.example terraform.tfvars    # set owner
-# Review main.tf inputs: S3 bucket prefixes, static_data_s3_path, data_s3_kms_key_arn, registry URLs, AMI pins
+cp backend.hcl.example backend.hcl              # review backend state bucket, region, and key
+cp terraform.tfvars.example terraform.tfvars    # set owner (and optional aws_region if not us-east-1)
+# Review main.tf inputs: S3 bucket prefixes, static_data_s3_path, data_s3_kms_key_arn, EDFS target, registry URLs, AMI pins
 cd ../../..
 ```
 

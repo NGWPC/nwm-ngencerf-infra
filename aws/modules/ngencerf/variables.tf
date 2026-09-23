@@ -58,21 +58,10 @@ variable "enable_pcs" {
   default     = false
 }
 
-variable "enterprise_data_env" {
-  type        = string
-  description = "EDFS / NOAA Enterprise Data Services environment token the server passes to the MSWM hydrofabric client: 'test' or 'oe'. Selects which EDFS host MSWM calls (test -> edfs.test..., oe -> edfs.oe...) and is validated by save_gage_tab. An unset value makes the server raise ValueError(\"Invalid environment: 'None'\"). 'test' for the Test/Sandbox EDFS, 'oe' for Optimization. Keep in sync with enterprise_data_url."
-  default     = "test"
-
-  validation {
-    condition     = contains(["test", "oe"], var.enterprise_data_env)
-    error_message = "enterprise_data_env must be 'test' or 'oe'."
-  }
-}
-
 variable "enterprise_data_url" {
   type        = string
-  description = "Base URL of the EDFS / NOAA Enterprise Data Services endpoint the server fetches hydrofabric geopackages, observational streamflow, and module-parameter metadata from at gage-create time (ENTERPRISE_DATA_URL in settings.py: os.getenv with no in-image default). Test: http://edfs.test.nextgenwaterprediction.com/ ; Optimization: https://edfs.oe.nextgenwaterprediction.com/ . Must match enterprise_data_env. EDFS is private NOAA infra with no public DNS record, so the env's VPC must have a resolver path to it."
-  default     = "http://edfs.test.nextgenwaterprediction.com/"
+  description = "Full base API URL of the EDFS / NOAA Enterprise Data Services endpoint the server fetches hydrofabric geopackages, observational streamflow, and module-parameter metadata from (ENTERPRISE_DATA_URL in settings.py: os.getenv with no in-image default). Standard endpoints: 'http://edfs.test.nextgenwaterprediction.com/api/v1/' (Test) or 'https://edfs.oe.nextgenwaterprediction.com/api/v1/' (Optimization); set to the target EDFS API base URL in external deployments (e.g. OWP). EDFS is private NOAA infra with no public DNS record, so the env's VPC must have a resolver path to it."
+  default     = "http://edfs.test.nextgenwaterprediction.com/api/v1/"
 }
 
 variable "forcing_s3_path" {
