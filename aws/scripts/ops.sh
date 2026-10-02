@@ -8,6 +8,8 @@
 # Actions:
 #   ecs-restart [all|django|nuxt] - Force new deployment on ECS Fargate tasks
 #   ecs-status                   - Show status, desired/running counts, and task defs
+#   ecs-exec [cmd]               - Open an interactive shell in the Django ECS container (default: /bin/bash)
+#   db-shell                     - Drop directly into PostgreSQL shell (python manage.py dbshell)
 #   slurm-queue                  - Print current Slurm queue from login node (squeue)
 #   slurm-cancel-all             - Cancel all running and pending Slurm jobs (scancel)
 #   slurm-drain                  - Drain Slurm partitions before an update (scontrol)
@@ -17,8 +19,10 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 ENV="${1:?usage: ops.sh <env> <action> [args]  (e.g. ops.sh sandbox slurm-queue)}"
-ACTION="${2:?missing action: ecs-restart, ecs-status, slurm-queue, slurm-cancel-all, slurm-drain, slurm-resume, login-ssm}"
+ACTION="${2:?missing action: ecs-restart, ecs-status, ecs-exec, db-shell, slurm-queue, slurm-cancel-all, slurm-drain, slurm-resume, login-ssm}"
 DIR="aws/envs/${ENV}"
 PREFIX="ngencerf-$(echo "${ENV}" | tr '/' '-')"
 
@@ -188,9 +192,17 @@ case "${ACTION}" in
     exec aws ssm start-session --region "${REGION}" --target "${login_iid}"
     ;;
 
+  ecs-exec)
+    exec bash "${SCRIPT_DIR}/ecs-exec.sh" "${ENV}" "${3:-bash}"
+    ;;
+
+  db-shell)
+    exec bash "${SCRIPT_DIR}/ecs-exec.sh" "${ENV}" "dbshell"
+    ;;
+
   *)
     echo "ERROR: unknown action '${ACTION}'." >&2
-    echo "Valid actions: ecs-restart, ecs-status, slurm-queue, slurm-cancel-all, slurm-drain, slurm-resume, login-ssm" >&2
+    echo "Valid actions: ecs-restart, ecs-status, ecs-exec, db-shell, slurm-queue, slurm-cancel-all, slurm-drain, slurm-resume, login-ssm" >&2
     exit 1
     ;;
 esac

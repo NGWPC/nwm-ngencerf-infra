@@ -127,6 +127,8 @@ make lint                          # tflint + checkov
 # Operations & Slurm management
 make ecs-restart ENV=ea            # force new deployment on Django + Nuxt tasks
 make ecs-status ENV=ea             # show task counts, rollout state, task defs
+make db-shell ENV=ea               # launch interactive PostgreSQL shell in Django container (dbshell)
+make ecs-exec ENV=ea               # launch interactive bash shell in Django container (or bash aws/scripts/ecs-exec.sh)
 make slurm-queue ENV=ea            # inspect running/pending Slurm jobs (squeue)
 make slurm-drain ENV=ea            # drain compute partitions before updating SIFs
 make slurm-resume ENV=ea           # resume compute partitions after updates

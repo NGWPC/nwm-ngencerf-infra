@@ -1,5 +1,5 @@
 .PHONY: help init plan apply destroy bootstrap load-static smoke fmt lint pre-commit-install _check_env \
-	ecs-restart ecs-status slurm-queue slurm-cancel-all slurm-drain slurm-resume login-ssm
+	ecs-restart ecs-status ecs-exec db-shell slurm-queue slurm-cancel-all slurm-drain slurm-resume login-ssm deploy
 
 ENV ?= sandbox
 TERRAFORM_DIR := aws/envs/$(ENV)
@@ -11,11 +11,14 @@ help:
 	@echo "  init                - terraform init (uses env's backend.hcl)"
 	@echo "  plan                - terraform plan"
 	@echo "  apply               - terraform apply"
+	@echo "  deploy              - full deploy: drain, cancel, apply, bootstrap, restart, resume"
 	@echo "  destroy             - terraform destroy"
 	@echo "  bootstrap           - stage workload SIFs + ngen static data onto EFS (after apply)"
 	@echo "  load-static         - re-sync ngen static data onto EFS (static-data stage only)"
 	@echo "  ecs-restart         - force new deployment on Django & Nuxt ECS tasks"
 	@echo "  ecs-status          - show ECS service status, task counts, and task definitions"
+	@echo "  ecs-exec            - open interactive shell in Django ECS container (CMD=\"...\", default bash)"
+	@echo "  db-shell            - open PostgreSQL shell in Django ECS container (python manage.py dbshell)"
 	@echo "  slurm-queue         - show Slurm queue on PCS login node (squeue)"
 	@echo "  slurm-cancel-all    - cancel running/pending Slurm jobs (scancel)"
 	@echo "  slurm-drain         - drain Slurm partitions before an update (scontrol)"
@@ -58,6 +61,12 @@ ecs-restart: _check_env
 ecs-status: _check_env
 	bash aws/scripts/ops.sh $(ENV) ecs-status
 
+ecs-exec: _check_env
+	bash aws/scripts/ecs-exec.sh $(ENV) "$(CMD)"
+
+db-shell: _check_env
+	bash aws/scripts/ecs-exec.sh $(ENV) dbshell
+
 slurm-queue: _check_env
 	bash aws/scripts/ops.sh $(ENV) slurm-queue
 
@@ -72,6 +81,17 @@ slurm-resume: _check_env
 
 login-ssm: _check_env
 	bash aws/scripts/ops.sh $(ENV) login-ssm
+
+deploy: _check_env
+	@echo "=== Starting full deployment sequence for $(ENV), running jobs will be cancelled. ==="
+	$(MAKE) slurm-queue ENV=$(ENV)
+	$(MAKE) slurm-drain ENV=$(ENV)
+	$(MAKE) slurm-cancel-all ENV=$(ENV)
+	$(MAKE) apply ENV=$(ENV)
+	$(MAKE) bootstrap ENV=$(ENV)
+	$(MAKE) ecs-restart ENV=$(ENV)
+	$(MAKE) slurm-resume ENV=$(ENV)
+	@echo "=== Full deployment completed successfully for $(ENV) ==="
 
 destroy: _check_env
 	cd $(TERRAFORM_DIR) && terraform destroy
